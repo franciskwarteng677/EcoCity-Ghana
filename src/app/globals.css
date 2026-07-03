@@ -40,3 +40,43 @@ a {
   background: #d4f3ec;
   color: #123f3d;
 }
+
+.ecg-map-marker {
+  display: grid;
+  height: 28px;
+  width: 28px;
+  place-items: center;
+  border: 3px solid #ffffff;
+  border-radius: 999px 999px 999px 0;
+  background: var(--marker-color);
+  box-shadow: 0 14px 28px rgba(19, 32, 31, 0.2);
+  cursor: pointer;
+  transform: rotate(-45deg);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.ecg-map-marker span {
+  display: block;
+  height: 8px;
+  width: 8px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.ecg-map-marker:hover,
+.ecg-map-marker-selected {
+  box-shadow: 0 18px 34px rgba(19, 32, 31, 0.28);
+  transform: rotate(-45deg) scale(1.12);
+}
+
+.ecg-map-marker-danger {
+  outline: 3px solid rgba(220, 38, 38, 0.28);
+  outline-offset: 2px;
+}
+
+.maplibregl-ctrl,
+.maplibregl-ctrl button {
+  border-radius: 8px;
+}
