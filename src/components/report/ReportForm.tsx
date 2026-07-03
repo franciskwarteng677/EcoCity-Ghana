@@ -1,11 +1,15 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState } from "react";
-import { Camera, Info, Send, ShieldAlert } from "lucide-react";
+import { useCallback, useState } from "react";
+import { AlertCircle, Camera, Info, LocateFixed, Loader2, Search, Send, ShieldAlert } from "lucide-react";
+import { isReportCategory, isReportUrgency } from "@/data/communityReports";
+import { submitCommunityReport, type NewCommunityReport } from "@/lib/reports";
 import { CategorySelector } from "./CategorySelector";
 import { FormField } from "./FormField";
+import { LocationPicker } from "./LocationPicker";
 import { ReportPreviewCard } from "./ReportPreviewCard";
+import { SubmissionNotice } from "./SubmissionNotice";
 import { UrgencySelector } from "./UrgencySelector";
 
 export type ReportFormData = {
@@ -20,9 +24,19 @@ export type ReportFormData = {
   contactPreference: string;
   reporterName: string;
   contactDetail: string;
+  latitude: string;
+  longitude: string;
 };
 
 type ReportFormErrors = Partial<Record<keyof ReportFormData, string>>;
+
+type MapTilerGeocodeResponse = {
+  features?: Array<{
+    center?: [number, number];
+    place_name?: string;
+    text?: string;
+  }>;
+};
 
 const initialFormData: ReportFormData = {
   category: "",
@@ -35,7 +49,9 @@ const initialFormData: ReportFormData = {
   evidenceName: "",
   contactPreference: "No contact needed",
   reporterName: "",
-  contactDetail: ""
+  contactDetail: "",
+  latitude: "",
+  longitude: ""
 };
 
 const inputClass =
@@ -43,10 +59,38 @@ const inputClass =
 
 const errorInputClass = "border-red-500 focus:border-red-600 focus:ring-red-100";
 
+function parseOptionalCoordinate(value: string) {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const numericValue = Number(trimmedValue);
+
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function formatCoordinate(value: number) {
+  return value.toFixed(6);
+}
+
+function isValidLatitude(value: number | null) {
+  return value !== null && value >= -90 && value <= 90;
+}
+
+function isValidLongitude(value: number | null) {
+  return value !== null && value >= -180 && value <= 180;
+}
+
 function validateForm(data: ReportFormData) {
   const errors: ReportFormErrors = {};
+  const hasLatitude = Boolean(data.latitude.trim());
+  const hasLongitude = Boolean(data.longitude.trim());
+  const latitude = parseOptionalCoordinate(data.latitude);
+  const longitude = parseOptionalCoordinate(data.longitude);
 
-  if (!data.category) {
+  if (!data.category || !isReportCategory(data.category)) {
     errors.category = "Choose the issue category.";
   }
 
@@ -64,74 +108,390 @@ function validateForm(data: ReportFormData) {
     errors.description = "Add a little more detail so the issue can be understood clearly.";
   }
 
-  if (!data.urgency) {
+  if (!data.urgency || !isReportUrgency(data.urgency)) {
     errors.urgency = "Choose an urgency level.";
   }
 
+  if (data.contactPreference === "Contact me for follow-up" && !data.contactDetail.trim()) {
+    errors.contactDetail = "Enter a phone number or email for follow-up.";
+  }
+
+  if (hasLatitude && latitude === null) {
+    errors.latitude = "Enter a valid latitude.";
+  } else if (latitude !== null && (latitude < -90 || latitude > 90)) {
+    errors.latitude = "Latitude must be between -90 and 90.";
+  }
+
+  if (hasLongitude && longitude === null) {
+    errors.longitude = "Enter a valid longitude.";
+  } else if (longitude !== null && (longitude < -180 || longitude > 180)) {
+    errors.longitude = "Longitude must be between -180 and 180.";
+  }
+
+  if (hasLatitude && !hasLongitude) {
+    errors.longitude = "Longitude is required when latitude is provided.";
+  }
+
+  if (hasLongitude && !hasLatitude) {
+    errors.latitude = "Latitude is required when longitude is provided.";
+  }
+
   return errors;
+}
+
+function hasDraftContent(data: ReportFormData) {
+  return Boolean(
+    data.category ||
+      data.community.trim() ||
+      data.location.trim() ||
+      data.title.trim() ||
+      data.description.trim() ||
+      data.urgency ||
+      data.isDangerous ||
+      data.evidenceName ||
+      data.reporterName.trim() ||
+      data.contactDetail.trim() ||
+      data.latitude.trim() ||
+      data.longitude.trim()
+  );
+}
+
+function sanitizeFormData(data: ReportFormData): ReportFormData {
+  return {
+    ...data,
+    community: data.community.trim(),
+    location: data.location.trim(),
+    title: data.title.trim(),
+    description: data.description.trim(),
+    reporterName: data.reporterName.trim(),
+    contactDetail: data.contactDetail.trim(),
+    latitude: data.latitude.trim(),
+    longitude: data.longitude.trim()
+  };
+}
+
+function toNewCommunityReport(data: ReportFormData): NewCommunityReport | null {
+  if (!isReportCategory(data.category) || !isReportUrgency(data.urgency)) {
+    return null;
+  }
+
+  const shouldStoreContact = data.contactPreference === "Contact me for follow-up";
+  const latitude = parseOptionalCoordinate(data.latitude);
+  const longitude = parseOptionalCoordinate(data.longitude);
+
+  return {
+    category: data.category,
+    title: data.title,
+    community: data.community,
+    locationDetail: data.location,
+    description: data.description,
+    urgency: data.urgency,
+    dangerNoted: data.isDangerous,
+    evidenceLabel: data.evidenceName || null,
+    contactPreference: data.contactPreference,
+    reporterName: shouldStoreContact ? data.reporterName || null : null,
+    reporterContact: shouldStoreContact ? data.contactDetail || null : null,
+    latitude,
+    longitude
+  };
 }
 
 export function ReportForm() {
   const [formData, setFormData] = useState<ReportFormData>(initialFormData);
   const [errors, setErrors] = useState<ReportFormErrors>({});
   const [preparedReport, setPreparedReport] = useState<ReportFormData | null>(null);
+  const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [submittedReportMapped, setSubmittedReportMapped] = useState<boolean | undefined>(undefined);
 
   function updateField<Field extends keyof ReportFormData>(field: Field, value: ReportFormData[Field]) {
     setFormData((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
+    setPreparedReport(null);
+    setSubmittedReportId(null);
+    setSubmittedReportMapped(undefined);
+    setSubmitError(null);
+    setLocationMessage(null);
+    setLocationError(null);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const setReportCoordinates = useCallback((coordinates: { latitude: number; longitude: number }, message: string) => {
+    setFormData((current) => ({
+      ...current,
+      latitude: formatCoordinate(coordinates.latitude),
+      longitude: formatCoordinate(coordinates.longitude)
+    }));
+    setErrors((current) => ({ ...current, latitude: undefined, longitude: undefined }));
+    setPreparedReport(null);
+    setSubmittedReportId(null);
+    setSubmittedReportMapped(undefined);
+    setSubmitError(null);
+    setLocationMessage(message);
+    setLocationError(null);
+  }, []);
+
+  const handleMapSelectLocation = useCallback(
+    (coordinates: { latitude: number; longitude: number }) => {
+      setReportCoordinates(coordinates, "Map pin selected. This report will be ready for map display.");
+    },
+    [setReportCoordinates]
+  );
+
+  function handleUseCurrentLocation() {
+    setLocationMessage(null);
+    setLocationError(null);
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationError("Location capture is not available in this browser.");
+      return;
+    }
+
+    setIsLocating(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setReportCoordinates(
+          {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          },
+          "Current location captured. This report will be ready for map display."
+        );
+        setIsLocating(false);
+      },
+      (error) => {
+        const message =
+          error.code === error.PERMISSION_DENIED
+            ? "Location permission was denied. You can still submit the report or drop a pin on the map."
+            : "Unable to capture your location. You can still submit the report or drop a pin on the map.";
+
+        setLocationError(message);
+        setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
+      }
+    );
+  }
+
+  async function handleFindTypedLocation() {
+    const mapKey = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+    const query = [formData.location.trim(), formData.community.trim(), "Ghana"].filter(Boolean).join(", ");
+
+    setLocationMessage(null);
+    setLocationError(null);
+
+    if (!query.trim()) {
+      setLocationError("Enter a community, landmark, street, or area before searching.");
+      return;
+    }
+
+    if (!mapKey) {
+      setLocationError("Location search needs the local MapTiler key. You can still use the map pin or submit without coordinates.");
+      return;
+    }
+
+    setIsSearchingLocation(true);
+
+    try {
+      const response = await fetch(
+        `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${mapKey}&country=gh&limit=1&language=en`
+      );
+
+      if (!response.ok) {
+        throw new Error("Location search was not available.");
+      }
+
+      const result = (await response.json()) as MapTilerGeocodeResponse;
+      const firstResult = result.features?.find((feature) => Array.isArray(feature.center) && feature.center.length === 2);
+
+      if (!firstResult?.center) {
+        setLocationError("No map match was found. You can drop a pin or submit the report without coordinates.");
+        return;
+      }
+
+      setReportCoordinates(
+        {
+          latitude: firstResult.center[1],
+          longitude: firstResult.center[0]
+        },
+        `${firstResult.place_name ?? firstResult.text ?? "Location"} found. Review the map pin before submitting.`
+      );
+    } catch (error) {
+      setLocationError(error instanceof Error ? error.message : "Location search was not available.");
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextErrors = validateForm(formData);
     setErrors(nextErrors);
+    setSubmitError(null);
 
     if (Object.keys(nextErrors).length > 0) {
       setPreparedReport(null);
       return;
     }
 
-    setPreparedReport({
-      ...formData,
-      community: formData.community.trim(),
-      location: formData.location.trim(),
-      title: formData.title.trim(),
-      description: formData.description.trim(),
-      reporterName: formData.reporterName.trim(),
-      contactDetail: formData.contactDetail.trim()
-    });
+    const sanitizedData = sanitizeFormData(formData);
+    const newReport = toNewCommunityReport(sanitizedData);
+
+    if (!newReport) {
+      setSubmitError("Review the category and urgency fields before submitting this report.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const savedReport = await submitCommunityReport(newReport);
+      const isMapped = typeof savedReport.latitude === "number" && typeof savedReport.longitude === "number";
+      setPreparedReport(sanitizedData);
+      setSubmittedReportId(savedReport.id);
+      setSubmittedReportMapped(isMapped);
+      setFormData(initialFormData);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Unable to submit this report right now.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
+
+  const previewReport = preparedReport ?? (hasDraftContent(formData) ? formData : null);
+  const parsedLatitude = parseOptionalCoordinate(formData.latitude);
+  const parsedLongitude = parseOptionalCoordinate(formData.longitude);
+  const selectedLatitude = isValidLatitude(parsedLatitude) ? parsedLatitude : null;
+  const selectedLongitude = isValidLongitude(parsedLongitude) ? parsedLongitude : null;
+  const hasSelectedMapLocation = selectedLatitude !== null && selectedLongitude !== null;
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-start">
       <form className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6" onSubmit={handleSubmit} noValidate>
         <div className="grid gap-6">
+          {submittedReportId ? <SubmissionNotice reportId={submittedReportId} isMapped={submittedReportMapped} /> : null}
+
+          {submitError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800" role="alert">
+              <div className="flex gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                <p>{submitError}</p>
+              </div>
+            </div>
+          ) : null}
+
           <CategorySelector value={formData.category} onChange={(value) => updateField("category", value)} error={errors.category} />
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <FormField id="community" label="Community or town" required error={errors.community}>
-              <input
-                id="community"
-                value={formData.community}
-                onChange={(event) => updateField("community", event.target.value)}
-                className={`${inputClass} ${errors.community ? errorInputClass : ""}`}
-                aria-invalid={Boolean(errors.community)}
-                aria-describedby={errors.community ? "community-error" : undefined}
-                placeholder="Example: Madina"
-              />
-            </FormField>
+          <section className="rounded-lg border border-civic-100 bg-civic-50 p-4" aria-labelledby="report-location-heading">
+            <div>
+              <h2 id="report-location-heading" className="text-lg font-bold text-ink">
+                Location
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-700">
+                Describe the area, then use current location or drop a pin if you can. Reports can still be submitted without a map location.
+              </p>
+            </div>
 
-            <FormField id="location" label="Specific location or landmark" hint="Use a nearby school, junction, drain, market, road, or landmark.">
-              <input
-                id="location"
-                value={formData.location}
-                onChange={(event) => updateField("location", event.target.value)}
-                className={inputClass}
-                aria-describedby="location-hint"
-                placeholder="Example: Near the main lorry station"
-              />
-            </FormField>
-          </div>
+            <div className="mt-5 grid gap-5 md:grid-cols-2">
+              <FormField id="community" label="Community, area, or town" required error={errors.community}>
+                <input
+                  id="community"
+                  value={formData.community}
+                  onChange={(event) => updateField("community", event.target.value)}
+                  className={`${inputClass} ${errors.community ? errorInputClass : ""}`}
+                  aria-invalid={Boolean(errors.community)}
+                  aria-describedby={errors.community ? "community-error" : undefined}
+                  placeholder="Example: Madina"
+                />
+              </FormField>
+
+              <FormField id="location" label="Landmark, street, or location detail" hint="Use a nearby school, junction, drain, market, road, or landmark.">
+                <input
+                  id="location"
+                  value={formData.location}
+                  onChange={(event) => updateField("location", event.target.value)}
+                  className={inputClass}
+                  aria-describedby="location-hint"
+                  placeholder="Example: Near the main lorry station"
+                />
+              </FormField>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                onClick={handleUseCurrentLocation}
+                disabled={isLocating}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-civic-700 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-civic-900 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isLocating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <LocateFixed className="h-4 w-4" aria-hidden="true" />}
+                {isLocating ? "Capturing location" : "Use my current location"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleFindTypedLocation}
+                disabled={isSearchingLocation}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-civic-100 bg-white px-4 text-sm font-bold text-civic-700 shadow-sm transition hover:bg-civic-50 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isSearchingLocation ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Search className="h-4 w-4" aria-hidden="true" />}
+                {isSearchingLocation ? "Finding location" : "Find typed location"}
+              </button>
+            </div>
+
+            {locationMessage ? <p className="mt-3 text-sm font-semibold text-civic-900">{locationMessage}</p> : null}
+            {locationError ? <p className="mt-3 text-sm font-semibold text-red-700">{locationError}</p> : null}
+
+            <div className="mt-5">
+              <LocationPicker latitude={selectedLatitude} longitude={selectedLongitude} onSelect={handleMapSelectLocation} />
+            </div>
+
+            <div className="mt-3 rounded-md bg-white px-3 py-2 text-xs font-bold text-slate-600">
+              {hasSelectedMapLocation
+                ? `Map location selected: ${formData.latitude}, ${formData.longitude}`
+                : "No map pin selected yet. The report can still be submitted and will be listed as needing map location."}
+            </div>
+
+            <details className="mt-4 rounded-lg border border-civic-100 bg-white p-4">
+              <summary className="cursor-pointer text-sm font-bold text-ink">Manual coordinates</summary>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Optional testing fields for teams that already know exact latitude and longitude.</p>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <FormField id="latitude" label="Latitude" error={errors.latitude}>
+                  <input
+                    id="latitude"
+                    value={formData.latitude}
+                    onChange={(event) => updateField("latitude", event.target.value)}
+                    className={`${inputClass} ${errors.latitude ? errorInputClass : ""}`}
+                    inputMode="decimal"
+                    aria-invalid={Boolean(errors.latitude)}
+                    aria-describedby={errors.latitude ? "latitude-error" : undefined}
+                    placeholder="Example: 5.603700"
+                  />
+                </FormField>
+
+                <FormField id="longitude" label="Longitude" error={errors.longitude}>
+                  <input
+                    id="longitude"
+                    value={formData.longitude}
+                    onChange={(event) => updateField("longitude", event.target.value)}
+                    className={`${inputClass} ${errors.longitude ? errorInputClass : ""}`}
+                    inputMode="decimal"
+                    aria-invalid={Boolean(errors.longitude)}
+                    aria-describedby={errors.longitude ? "longitude-error" : undefined}
+                    placeholder="Example: -0.186900"
+                  />
+                </FormField>
+              </div>
+            </details>
+          </section>
 
           <FormField id="title" label="Short issue title" required error={errors.title}>
             <input
@@ -218,17 +578,25 @@ export function ReportForm() {
               id="contactDetail"
               value={formData.contactDetail}
               onChange={(event) => updateField("contactDetail", event.target.value)}
-              className={inputClass}
+              className={`${inputClass} ${errors.contactDetail ? errorInputClass : ""}`}
+              aria-invalid={Boolean(errors.contactDetail)}
+              aria-describedby={errors.contactDetail ? "contactDetail-error" : undefined}
               placeholder="Optional"
             />
+            {errors.contactDetail ? (
+              <p id="contactDetail-error" className="mt-2 text-sm font-semibold text-red-700">
+                {errors.contactDetail}
+              </p>
+            ) : null}
           </FormField>
 
           <button
             type="submit"
+            disabled={isSubmitting}
             className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-civic-700 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-civic-900 focus:outline-none focus:ring-2 focus:ring-civic-700 focus:ring-offset-2 sm:w-fit"
           >
-            <Send className="h-4 w-4" aria-hidden="true" />
-            Prepare report preview
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
+            {isSubmitting ? "Submitting report" : "Submit report"}
           </button>
         </div>
       </form>
@@ -261,7 +629,7 @@ export function ReportForm() {
           </div>
         </div>
 
-        <ReportPreviewCard report={preparedReport} />
+        <ReportPreviewCard report={previewReport} />
       </aside>
     </div>
   );

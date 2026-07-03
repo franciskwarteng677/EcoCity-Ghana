@@ -10,6 +10,9 @@ export function RecentPriorityReports({ insights }: { insights: DashboardInsight
       title="Recent priority reports"
       description="Newer reports that are urgent, need review, or include a danger signal."
     >
+      {insights.recentPriorityReports.length === 0 ? (
+        <p className="rounded-md bg-slate-50 p-4 text-sm font-semibold text-slate-600">No priority reports are available yet.</p>
+      ) : null}
       <div className="grid gap-4">
         {insights.recentPriorityReports.map((report) => (
           <article key={report.id} className="rounded-lg bg-slate-50 p-4">
@@ -44,4 +47,3 @@ export function RecentPriorityReports({ insights }: { insights: DashboardInsight
     </AnalyticsSection>
   );
 }
-

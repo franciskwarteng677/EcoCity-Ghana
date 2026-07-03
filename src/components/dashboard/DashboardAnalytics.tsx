@@ -1,3 +1,7 @@
+"use client";
+
+import { AlertCircle, Loader2 } from "lucide-react";
+import { useCommunityReports } from "@/hooks/useCommunityReports";
 import { CategoryBreakdown } from "./CategoryBreakdown";
 import { CommunityHotspots } from "./CommunityHotspots";
 import { DashboardSummaryCards } from "./DashboardSummaryCards";
@@ -9,10 +13,48 @@ import { UrgencyBreakdown } from "./UrgencyBreakdown";
 import { getDashboardInsights } from "./dashboardInsights";
 
 export function DashboardAnalytics() {
-  const insights = getDashboardInsights();
+  const { reports, source, isLoading, error } = useCommunityReports();
+
+  if (isLoading) {
+    return (
+      <div className="grid min-h-[260px] place-items-center rounded-lg border border-civic-100 bg-white p-8 text-center shadow-sm">
+        <div>
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-civic-700" aria-hidden="true" />
+          <p className="mt-4 text-sm font-bold text-ink">Loading dashboard insights</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Calculating report trends and service area signals.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-800" role="alert">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <div>
+            <h2 className="text-base font-bold">Unable to load dashboard insights</h2>
+            <p className="mt-2 text-sm leading-6">{error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const insights = getDashboardInsights(reports);
 
   return (
     <div className="grid gap-6">
+      {source === "sample" ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
+          Supabase environment variables are not configured, so dashboard insights use local starter reports.
+        </div>
+      ) : null}
+      {reports.length === 0 ? (
+        <div className="rounded-lg border border-civic-100 bg-white p-5 text-sm font-semibold leading-6 text-slate-600 shadow-sm">
+          No reports have been submitted yet. New citizen reports will appear in these dashboard summaries after submission.
+        </div>
+      ) : null}
       <DashboardSummaryCards insights={insights} />
       <div className="grid gap-6 xl:grid-cols-2">
         <StatusOverview insights={insights} />
@@ -30,4 +72,3 @@ export function DashboardAnalytics() {
     </div>
   );
 }
-

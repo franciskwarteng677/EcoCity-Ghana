@@ -1,20 +1,21 @@
 export type ReportStatus = "Logged" | "Needs review" | "In review" | "Open" | "Resolved";
 export type ReportUrgency = "Low" | "Medium" | "High" | "Emergency";
+export type ReportCategory =
+  | "Flooding"
+  | "Blocked Drain"
+  | "Poor Drainage"
+  | "Illegal Dumping"
+  | "Sanitation Concern"
+  | "Polluted Water"
+  | "Unsafe Road"
+  | "Broken Streetlight"
+  | "Public Infrastructure"
+  | "Community Safety";
 
 export type CommunityReport = {
   id: string;
+  category: ReportCategory;
   title: string;
-  category:
-    | "Flooding"
-    | "Blocked Drain"
-    | "Poor Drainage"
-    | "Illegal Dumping"
-    | "Sanitation Concern"
-    | "Polluted Water"
-    | "Unsafe Road"
-    | "Broken Streetlight"
-    | "Public Infrastructure"
-    | "Community Safety";
   community: string;
   locationDetail: string;
   description: string;
@@ -24,10 +25,37 @@ export type CommunityReport = {
   isDangerous: boolean;
   responsibleServiceArea: string;
   evidenceLabel?: string;
+  contactPreference?: string | null;
+  reporterName?: string | null;
+  reporterContact?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  createdAt?: string;
 };
+
+export const reportCategories: ReportCategory[] = [
+  "Flooding",
+  "Blocked Drain",
+  "Poor Drainage",
+  "Illegal Dumping",
+  "Sanitation Concern",
+  "Polluted Water",
+  "Unsafe Road",
+  "Broken Streetlight",
+  "Public Infrastructure",
+  "Community Safety"
+];
 
 export const reportStatuses: ReportStatus[] = ["Logged", "Needs review", "In review", "Open", "Resolved"];
 export const reportUrgencies: ReportUrgency[] = ["Low", "Medium", "High", "Emergency"];
+
+export function isReportCategory(value: string): value is ReportCategory {
+  return reportCategories.includes(value as ReportCategory);
+}
+
+export function isReportUrgency(value: string): value is ReportUrgency {
+  return reportUrgencies.includes(value as ReportUrgency);
+}
 
 export const communityReports: CommunityReport[] = [
   {
@@ -42,7 +70,9 @@ export const communityReports: CommunityReport[] = [
     dateReported: "2026-06-28",
     isDangerous: true,
     responsibleServiceArea: "Drainage and Roads",
-    evidenceLabel: "2 photos noted"
+    evidenceLabel: "2 photos noted",
+    latitude: 5.5662,
+    longitude: -0.2606
   },
   {
     id: "ECG-1041",
@@ -56,7 +86,9 @@ export const communityReports: CommunityReport[] = [
     dateReported: "2026-06-27",
     isDangerous: false,
     responsibleServiceArea: "Waste Management",
-    evidenceLabel: "Photo noted"
+    evidenceLabel: "Photo noted",
+    latitude: 5.5657,
+    longitude: -0.2354
   },
   {
     id: "ECG-1040",
@@ -69,7 +101,9 @@ export const communityReports: CommunityReport[] = [
     status: "Logged",
     dateReported: "2026-06-25",
     isDangerous: false,
-    responsibleServiceArea: "Public Lighting"
+    responsibleServiceArea: "Public Lighting",
+    latitude: 5.5831,
+    longitude: -0.1073
   },
   {
     id: "ECG-1039",
@@ -83,7 +117,9 @@ export const communityReports: CommunityReport[] = [
     dateReported: "2026-06-24",
     isDangerous: true,
     responsibleServiceArea: "Drainage and Public Works",
-    evidenceLabel: "Photo noted"
+    evidenceLabel: "Photo noted",
+    latitude: 5.5881,
+    longitude: -0.2034
   },
   {
     id: "ECG-1038",
@@ -96,7 +132,9 @@ export const communityReports: CommunityReport[] = [
     status: "Needs review",
     dateReported: "2026-06-22",
     isDangerous: true,
-    responsibleServiceArea: "Roads and Transport"
+    responsibleServiceArea: "Roads and Transport",
+    latitude: 5.6818,
+    longitude: -0.1668
   },
   {
     id: "ECG-1037",
@@ -110,7 +148,9 @@ export const communityReports: CommunityReport[] = [
     dateReported: "2026-06-20",
     isDangerous: false,
     responsibleServiceArea: "Sanitation and Drainage",
-    evidenceLabel: "3 photos noted"
+    evidenceLabel: "3 photos noted",
+    latitude: 5.692,
+    longitude: -0.0332
   },
   {
     id: "ECG-1036",
@@ -123,7 +163,9 @@ export const communityReports: CommunityReport[] = [
     status: "In review",
     dateReported: "2026-06-18",
     isDangerous: false,
-    responsibleServiceArea: "Environmental Health"
+    responsibleServiceArea: "Environmental Health",
+    latitude: 5.6532,
+    longitude: -0.0079
   },
   {
     id: "ECG-1035",
@@ -136,7 +178,9 @@ export const communityReports: CommunityReport[] = [
     status: "Resolved",
     dateReported: "2026-06-16",
     isDangerous: false,
-    responsibleServiceArea: "Public Works"
+    responsibleServiceArea: "Public Works",
+    latitude: 5.5557,
+    longitude: -0.1827
   },
   {
     id: "ECG-1034",
@@ -149,7 +193,9 @@ export const communityReports: CommunityReport[] = [
     status: "Open",
     dateReported: "2026-06-14",
     isDangerous: false,
-    responsibleServiceArea: "Environmental Health"
+    responsibleServiceArea: "Environmental Health",
+    latitude: 5.6061,
+    longitude: -0.2538
   },
   {
     id: "ECG-1033",
@@ -163,6 +209,8 @@ export const communityReports: CommunityReport[] = [
     dateReported: "2026-06-12",
     isDangerous: true,
     responsibleServiceArea: "Community Safety and Roads",
-    evidenceLabel: "Video noted"
+    evidenceLabel: "Video noted",
+    latitude: 5.7043,
+    longitude: -0.1671
   }
 ];

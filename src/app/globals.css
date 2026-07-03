@@ -80,3 +80,23 @@ a {
 .maplibregl-ctrl button {
   border-radius: 8px;
 }
+
+.ecg-location-picker-marker {
+  display: block;
+  height: 30px;
+  width: 30px;
+  border: 3px solid #ffffff;
+  border-radius: 999px 999px 999px 0;
+  background: #0d5d59;
+  box-shadow: 0 16px 30px rgba(19, 32, 31, 0.24);
+  cursor: grab;
+  transform: rotate(-45deg);
+}
+
+.ecg-location-picker-marker::after {
+  position: absolute;
+  inset: 8px;
+  border-radius: 999px;
+  background: #ffffff;
+  content: "";
+}

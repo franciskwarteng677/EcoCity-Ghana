@@ -7,6 +7,9 @@ export function ServiceAreaSummary({ insights }: { insights: DashboardInsights }
       title="Responsible service areas"
       description="Service groups connected to the current reports and their priority load."
     >
+      {insights.serviceAreas.length === 0 ? (
+        <p className="rounded-md bg-slate-50 p-4 text-sm font-semibold text-slate-600">No service area activity is available yet.</p>
+      ) : null}
       <div className="grid gap-3">
         {insights.serviceAreas.map((area) => (
           <div key={area.label} className="rounded-lg border border-slate-200 p-4">
@@ -28,4 +31,3 @@ export function ServiceAreaSummary({ insights }: { insights: DashboardInsights }
     </AnalyticsSection>
   );
 }
-

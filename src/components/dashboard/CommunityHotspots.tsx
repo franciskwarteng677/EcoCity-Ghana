@@ -7,6 +7,9 @@ export function CommunityHotspots({ insights }: { insights: DashboardInsights })
       title="Community hotspots"
       description="Communities with repeated reports, urgent concerns, or danger signals."
     >
+      {insights.communityHotspots.length === 0 ? (
+        <p className="rounded-md bg-slate-50 p-4 text-sm font-semibold text-slate-600">No community hotspots are available yet.</p>
+      ) : null}
       <div className="grid gap-3">
         {insights.communityHotspots.map((community) => (
           <div key={community.label} className="rounded-lg bg-slate-50 p-4">
@@ -30,4 +33,3 @@ export function CommunityHotspots({ insights }: { insights: DashboardInsights })
     </AnalyticsSection>
   );
 }
-

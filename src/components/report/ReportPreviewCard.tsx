@@ -1,6 +1,5 @@
 import { AlertTriangle, Camera, MapPin, UserRound } from "lucide-react";
 import type { ReportFormData } from "./ReportForm";
-import { SubmissionNotice } from "./SubmissionNotice";
 
 type ReportPreviewCardProps = {
   report: ReportFormData | null;
@@ -16,7 +15,7 @@ export function ReportPreviewCard({ report }: ReportPreviewCardProps) {
       <div className="rounded-lg border border-slate-200 bg-white p-6">
         <h2 className="text-lg font-bold text-ink">Report preview</h2>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Complete the required fields to prepare a clean summary of the issue. The preview will help confirm the category, location, urgency, and contact preference before official submission is available.
+          Complete the report fields to review the category, location, urgency, and contact preference before submission.
         </p>
       </div>
     );
@@ -24,7 +23,6 @@ export function ReportPreviewCard({ report }: ReportPreviewCardProps) {
 
   return (
     <div className="grid gap-4" aria-live="polite">
-      <SubmissionNotice />
       <article className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -41,6 +39,14 @@ export function ReportPreviewCard({ report }: ReportPreviewCardProps) {
               <span className="font-bold text-ink">{report.community}</span>
               <br />
               {previewValue(report.location)}
+              {report.latitude && report.longitude ? (
+                <>
+                  <br />
+                  <span className="text-slate-600">
+                    Coordinates: {report.latitude}, {report.longitude}
+                  </span>
+                </>
+              ) : null}
             </p>
           </div>
           <div className="flex gap-3">
