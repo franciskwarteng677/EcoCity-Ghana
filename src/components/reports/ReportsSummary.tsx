@@ -6,13 +6,13 @@ type ReportsSummaryProps = {
 };
 
 export function ReportsSummary({ reports }: ReportsSummaryProps) {
-  const openReports = reports.filter((report) => report.status !== "Resolved").length;
+  const activeReports = reports.filter((report) => !["resolved", "rejected", "duplicate"].includes(report.status)).length;
   const dangerousReports = reports.filter((report) => report.isDangerous).length;
   const communities = new Set(reports.map((report) => report.community)).size;
-  const resolvedReports = reports.filter((report) => report.status === "Resolved").length;
+  const resolvedReports = reports.filter((report) => report.status === "resolved").length;
 
   const stats = [
-    { label: "Active reports", value: openReports, icon: ClipboardList },
+    { label: "Active reports", value: activeReports, icon: ClipboardList },
     { label: "Communities", value: communities, icon: MapPin },
     { label: "Danger signals", value: dangerousReports, icon: AlertTriangle },
     { label: "Resolved", value: resolvedReports, icon: CircleCheck }

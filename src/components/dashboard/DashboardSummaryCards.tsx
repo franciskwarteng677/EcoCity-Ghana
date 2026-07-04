@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleCheck, ClipboardList, Flame, MapPinned, ShieldAlert, UsersRound, Wrench } from "lucide-react";
+import { AlertTriangle, CircleCheck, ClipboardList, Flame, MapPinned, ShieldAlert, UserCheck, UsersRound, Wrench } from "lucide-react";
 import type { DashboardInsights } from "./dashboardInsights";
 import { InsightCard } from "./InsightCard";
 
@@ -11,17 +11,29 @@ export function DashboardSummaryCards({ insights }: { insights: DashboardInsight
       icon: ClipboardList
     },
     {
-      label: "Open reports",
-      value: insights.openReports,
-      detail: "Reports still visible as open items for local service attention.",
-      icon: MapPinned
-    },
-    {
       label: "Needs review",
       value: insights.needsReviewReports,
       detail: "Reports that should be assessed before response planning.",
       icon: ShieldAlert,
       tone: "amber" as const
+    },
+    {
+      label: "Verified",
+      value: insights.verifiedReports,
+      detail: "Reports confirmed as actionable after review.",
+      icon: UserCheck
+    },
+    {
+      label: "Assigned",
+      value: insights.assignedReports,
+      detail: "Reports routed to a responsible service area.",
+      icon: Wrench
+    },
+    {
+      label: "In progress",
+      value: insights.inProgressReports,
+      detail: "Reports with response work underway.",
+      icon: MapPinned
     },
     {
       label: "Resolved reports",
@@ -37,24 +49,17 @@ export function DashboardSummaryCards({ insights }: { insights: DashboardInsight
       tone: "red" as const
     },
     {
-      label: "Emergency reports",
-      value: insights.emergencyReports,
-      detail: "Reports carrying the highest urgency classification.",
+      label: "High/emergency reports",
+      value: insights.highEmergencyReports,
+      detail: "Reports carrying high or emergency urgency.",
       icon: Flame,
       tone: "red" as const
     },
     {
-      label: "Communities represented",
-      value: insights.communitiesRepresented,
-      detail: "Distinct communities appearing across the current reports.",
+      label: "Need map location",
+      value: insights.reportsNeedingMapLocation,
+      detail: "Reports that need coordinates before appearing as map pins.",
       icon: UsersRound,
-      tone: "slate" as const
-    },
-    {
-      label: "High-priority service areas",
-      value: insights.highPriorityServiceAreas,
-      detail: "Service areas with urgent reports or danger signals.",
-      icon: Wrench,
       tone: "amber" as const
     }
   ];
@@ -72,4 +77,3 @@ export function DashboardSummaryCards({ insights }: { insights: DashboardInsight
     </section>
   );
 }
-

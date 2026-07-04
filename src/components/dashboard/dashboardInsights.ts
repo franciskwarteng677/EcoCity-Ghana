@@ -26,13 +26,16 @@ export type ServiceAreaInsight = CountItem & {
 
 export type DashboardInsights = {
   totalReports: number;
-  openReports: number;
   needsReviewReports: number;
+  verifiedReports: number;
+  assignedReports: number;
+  inProgressReports: number;
   resolvedReports: number;
   dangerSignals: number;
-  emergencyReports: number;
+  highEmergencyReports: number;
   communitiesRepresented: number;
   highPriorityServiceAreas: number;
+  reportsNeedingMapLocation: number;
   statusOverview: CountItem<ReportStatus>[];
   urgencyBreakdown: CountItem<ReportUrgency>[];
   categoryBreakdown: CountItem[];
@@ -100,7 +103,7 @@ function getServiceAreaInsights(reports: CommunityReport[]) {
   return sortByCountThenLabel(
     serviceAreas.map((serviceArea) => {
       const serviceReports = reports.filter((report) => report.responsibleServiceArea === serviceArea);
-      const openCount = serviceReports.filter((report) => report.status !== "Resolved").length;
+      const openCount = serviceReports.filter((report) => !["resolved", "rejected", "duplicate"].includes(report.status)).length;
       const urgentCount = serviceReports.filter((report) => priorityUrgencies.includes(report.urgency)).length;
       const dangerCount = serviceReports.filter((report) => report.isDangerous).length;
 
@@ -122,13 +125,16 @@ export function getDashboardInsights(reports = communityReports): DashboardInsig
 
   return {
     totalReports: reports.length,
-    openReports: reports.filter((report) => report.status === "Open").length,
-    needsReviewReports: reports.filter((report) => report.status === "Needs review").length,
-    resolvedReports: reports.filter((report) => report.status === "Resolved").length,
+    needsReviewReports: reports.filter((report) => report.status === "needs_review").length,
+    verifiedReports: reports.filter((report) => report.status === "verified").length,
+    assignedReports: reports.filter((report) => report.status === "assigned").length,
+    inProgressReports: reports.filter((report) => report.status === "in_progress").length,
+    resolvedReports: reports.filter((report) => report.status === "resolved").length,
     dangerSignals: reports.filter((report) => report.isDangerous).length,
-    emergencyReports: reports.filter((report) => report.urgency === "Emergency").length,
+    highEmergencyReports: reports.filter((report) => priorityUrgencies.includes(report.urgency)).length,
     communitiesRepresented: new Set(reports.map((report) => report.community)).size,
     highPriorityServiceAreas: serviceAreas.filter((area) => area.urgentCount > 0 || area.dangerCount > 0).length,
+    reportsNeedingMapLocation: reports.filter((report) => typeof report.latitude !== "number" || typeof report.longitude !== "number").length,
     statusOverview: countBy(reports, (report) => report.status, reportStatuses),
     urgencyBreakdown: countBy(reports, (report) => report.urgency, reportUrgencies),
     categoryBreakdown: sortByCountThenLabel(countBy(reports, (report) => report.category)),
@@ -137,9 +143,8 @@ export function getDashboardInsights(reports = communityReports): DashboardInsig
     floodDrainageCommunities: sortByCountThenLabel(countBy(floodDrainageReports, (report) => report.community)),
     serviceAreas,
     recentPriorityReports: [...reports]
-      .filter((report) => priorityUrgencies.includes(report.urgency) || report.isDangerous || report.status === "Needs review")
+      .filter((report) => priorityUrgencies.includes(report.urgency) || report.isDangerous || report.status === "needs_review")
       .sort((a, b) => b.dateReported.localeCompare(a.dateReported))
       .slice(0, 5)
   };
 }
-

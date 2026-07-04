@@ -1,10 +1,11 @@
 import {
   communityReports,
   type CommunityReport,
+  type ReportUpdate,
   type ReportCategory,
-  type ReportStatus
+  normalizeReportStatus
 } from "@/data/communityReports";
-import { getSupabaseClient, isSupabaseConfigured, type CommunityReportInsert, type CommunityReportRow } from "./supabase";
+import { getSupabaseClient, isSupabaseConfigured, type CommunityReportInsert, type CommunityReportRow, type ReportUpdateRow } from "./supabase";
 
 export type ReportDataSource = "supabase" | "sample";
 
@@ -27,6 +28,12 @@ export type NewCommunityReport = {
   reporterContact?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+};
+
+export type ReportWithUpdates = {
+  report: CommunityReport;
+  updates: ReportUpdate[];
+  source: ReportDataSource;
 };
 
 const categoryServiceAreas: Record<ReportCategory, string> = {
@@ -64,7 +71,7 @@ export function mapReportRowToCommunityReport(row: CommunityReportRow): Communit
     locationDetail: row.location_detail,
     description: row.description,
     urgency: row.urgency,
-    status: row.status,
+    status: normalizeReportStatus(row.status),
     dateReported: row.created_at,
     isDangerous: row.danger_noted,
     responsibleServiceArea: row.service_area,
@@ -86,7 +93,7 @@ export function mapNewReportToInsert(report: NewCommunityReport): CommunityRepor
     location_detail: report.locationDetail,
     description: report.description,
     urgency: report.urgency,
-    status: "Needs review" satisfies ReportStatus,
+    status: "needs_review",
     service_area: getServiceAreaForCategory(report.category),
     danger_noted: report.dangerNoted,
     evidence_label: report.evidenceLabel || null,
@@ -95,6 +102,18 @@ export function mapNewReportToInsert(report: NewCommunityReport): CommunityRepor
     reporter_contact: report.reporterContact || null,
     latitude: report.latitude ?? null,
     longitude: report.longitude ?? null
+  };
+}
+
+export function mapReportUpdateRowToReportUpdate(row: ReportUpdateRow): ReportUpdate {
+  return {
+    id: row.id,
+    reportId: row.report_id,
+    status: normalizeReportStatus(row.status),
+    note: row.note,
+    responsibleServiceArea: row.responsible_service_area,
+    isPublic: row.is_public,
+    createdAt: row.created_at
   };
 }
 
@@ -127,6 +146,49 @@ export async function fetchCommunityReports(): Promise<ReportsResult> {
   };
 }
 
+export async function fetchCommunityReportById(id: string): Promise<ReportWithUpdates | null> {
+  if (!isSupabaseConfigured()) {
+    const sampleReport = communityReports.find((report) => report.id === id);
+
+    return sampleReport ? { report: sampleReport, updates: [], source: "sample" } : null;
+  }
+
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    const sampleReport = communityReports.find((report) => report.id === id);
+
+    return sampleReport ? { report: sampleReport, updates: [], source: "sample" } : null;
+  }
+
+  const { data: reportData, error: reportError } = await supabase.from("reports").select("*").eq("id", id).single();
+
+  if (reportError) {
+    if (reportError.code === "PGRST116") {
+      return null;
+    }
+
+    throw new Error(reportError.message);
+  }
+
+  const { data: updateData, error: updateError } = await supabase
+    .from("report_updates")
+    .select("*")
+    .eq("report_id", id)
+    .eq("is_public", true)
+    .order("created_at", { ascending: false });
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  return {
+    report: mapReportRowToCommunityReport(reportData),
+    updates: (updateData ?? []).map(mapReportUpdateRowToReportUpdate),
+    source: "supabase"
+  };
+}
+
 export async function submitCommunityReport(report: NewCommunityReport) {
   const supabase = getSupabaseClient();
 
@@ -146,4 +208,3 @@ export async function submitCommunityReport(report: NewCommunityReport) {
 
   return mapReportRowToCommunityReport(data);
 }
-

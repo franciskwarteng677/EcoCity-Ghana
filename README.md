@@ -1,10 +1,74 @@
 # EcoCity Ghana
 
-EcoCity Ghana is a civic technology and smart community reporting platform for Ghanaian communities. It is designed to help residents and local stakeholders report, save, organize, and track community issues such as flooding, blocked drains, poor drainage, illegal dumping, sanitation concerns, unsafe roads, broken streetlights, public infrastructure issues, and community safety risks.
+EcoCity Ghana is a civic technology and smart community reporting platform for Ghanaian communities. Residents can report flooding, blocked drains, poor drainage, illegal dumping, sanitation concerns, unsafe roads, broken streetlights, public infrastructure issues, and community safety risks.
 
-The project uses Next.js, Tailwind CSS, MapTiler, MapLibre, and Supabase to present the public product experience, including a citizen reporting flow with real report persistence, community reports tracking, issue categories, an interactive community map, dashboard analytics, and upcoming capabilities such as Flood & Drainage Watch.
+The app uses Next.js App Router, TypeScript, Tailwind CSS, MapLibre/MapTiler, and Supabase.
 
-This repository does not include authentication, private server APIs, image uploads, AI features, or production deployment configuration.
+## Report Submission
+
+Residents submit reports at `/report` with category, community, location detail, description, urgency, danger signal, optional evidence label, optional contact preference, and optional map coordinates. New reports are saved with the `needs_review` workflow status.
+
+Reports can include browser location, a dropped map pin, typed-location search, manual coordinates, or only a descriptive location. Reports without coordinates are still saved and reviewed.
+
+## Supabase Persistence
+
+Run `supabase-schema.sql` in the Supabase SQL editor before using the app with a live database. The schema creates:
+
+- `reports` for submitted community reports.
+- `report_updates` for public civic response timeline entries.
+- RLS policies that allow public report submission and public reads.
+- Public `report_updates` reads only where `is_public = true`.
+
+Public users are not granted report update permissions. Admin status changes are handled by a server-side API route.
+
+## Public Reports
+
+`/reports` shows the community report register with filters, status badges, urgency badges, service areas, danger signals, and map-location readiness:
+
+- Mapped
+- Approximate location only
+- Needs map location
+
+Each report links to `/reports/[id]`, which shows the full report details and public update timeline.
+
+## Map Behavior
+
+`/map` displays reports with valid latitude and longitude as pins. Reports without coordinates appear in a separate “Reports without map location” section, so they remain visible even before mapping is complete.
+
+## Dashboard Analytics
+
+`/dashboard` summarizes total reports, workflow status counts, danger signals, high/emergency reports, responsible service areas, and reports needing map location. Empty states explain when no reports have been assigned, resolved, or submitted yet.
+
+## Admin Review Workflow
+
+`/admin` is an MVP review console. Reviewers can filter reports, select a report, update its status, assign a responsible service area, and add a public update note. Saves go through `/api/admin/reports`, which checks `ADMIN_REVIEW_CODE` on the server and uses the Supabase service role key only server-side.
+
+Workflow statuses:
+
+- `needs_review`
+- `verified`
+- `assigned`
+- `in_progress`
+- `resolved`
+- `rejected`
+- `duplicate`
+- `needs_more_information`
+
+## Environment Variables
+
+Create `.env.local` for local development:
+
+```bash
+NEXT_PUBLIC_MAPTILER_KEY=your_maptiler_key_here
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url_here
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_server_only_service_role_key_here
+ADMIN_REVIEW_CODE=your_admin_review_code_here
+```
+
+Only `NEXT_PUBLIC_*` values are exposed to the browser. Do not use `NEXT_PUBLIC` for `ADMIN_REVIEW_CODE` or `SUPABASE_SERVICE_ROLE_KEY`.
+
+`.env.local` is ignored by Git and should not be committed.
 
 ## Run Locally
 
@@ -13,16 +77,13 @@ npm install
 npm run dev
 ```
 
-Create a local `.env.local` file with the browser keys required by the map and Supabase:
+Open `http://localhost:3000` and verify:
 
-```bash
-NEXT_PUBLIC_MAPTILER_KEY=your_maptiler_key_here
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url_here
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
-```
-
-Run the SQL in `supabase-schema.sql` in the Supabase SQL editor before submitting reports. The schema creates the `reports` table, sensible defaults, indexes, and public insert/select policies for the MVP.
-
-Reports can be submitted with a community or landmark description, browser-captured current location, a selected map pin, location search, or manually entered coordinates. Reports without map coordinates still appear in the community reports register and dashboard analytics, but map markers require current location, map pin selection, or latitude and longitude; reports without map location are listed separately on the map page.
-
-Open `http://localhost:3000` in your browser.
+- `/`
+- `/report`
+- `/reports`
+- `/reports/[id]`
+- `/map`
+- `/dashboard`
+- `/about`
+- `/admin`

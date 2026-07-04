@@ -21,6 +21,24 @@ export type CommunityReportRow = {
   created_at: string;
 };
 
+export type ReportUpdateRow = {
+  id: string;
+  report_id: string;
+  status: ReportStatus;
+  note: string | null;
+  responsible_service_area: string | null;
+  is_public: boolean;
+  created_at: string;
+};
+
+export type ReportUpdateInsert = {
+  report_id: string;
+  status: ReportStatus;
+  note?: string | null;
+  responsible_service_area?: string | null;
+  is_public?: boolean;
+};
+
 export type CommunityReportInsert = {
   category: ReportCategory;
   title: string;
@@ -46,6 +64,12 @@ export type Database = {
         Row: CommunityReportRow;
         Insert: CommunityReportInsert;
         Update: Partial<CommunityReportInsert>;
+        Relationships: [];
+      };
+      report_updates: {
+        Row: ReportUpdateRow;
+        Insert: ReportUpdateInsert;
+        Update: Partial<ReportUpdateInsert>;
         Relationships: [];
       };
     };

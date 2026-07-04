@@ -2,7 +2,7 @@
 
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { reportCategories, type CommunityReport } from "@/data/communityReports";
+import { getReportStatusLabel, reportCategories, type CommunityReport } from "@/data/communityReports";
 import { useCommunityReports } from "@/hooks/useCommunityReports";
 import { ReportDetailPanel } from "./ReportDetailPanel";
 import { ReportList } from "./ReportList";
@@ -31,7 +31,7 @@ function matchesSearch(report: CommunityReport, search: string) {
     report.locationDetail,
     report.description,
     report.responsibleServiceArea,
-    report.status,
+    getReportStatusLabel(report.status),
     report.urgency
   ]
     .join(" ")

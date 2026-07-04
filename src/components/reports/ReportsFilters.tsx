@@ -1,5 +1,5 @@
 import { Search, SlidersHorizontal, X } from "lucide-react";
-import { reportStatuses, reportUrgencies, type CommunityReport, type ReportStatus, type ReportUrgency } from "@/data/communityReports";
+import { getReportStatusLabel, reportStatuses, reportUrgencies, type CommunityReport, type ReportStatus, type ReportUrgency } from "@/data/communityReports";
 
 export type ReportFilters = {
   search: string;
@@ -77,7 +77,7 @@ export function ReportsFilters({ filters, categories, onChange, onClear }: Repor
             <option value="">All statuses</option>
             {reportStatuses.map((status) => (
               <option key={status} value={status}>
-                {status}
+                {getReportStatusLabel(status)}
               </option>
             ))}
           </select>

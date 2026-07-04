@@ -1,4 +1,12 @@
-export type ReportStatus = "Logged" | "Needs review" | "In review" | "Open" | "Resolved";
+export type ReportStatus =
+  | "needs_review"
+  | "verified"
+  | "assigned"
+  | "in_progress"
+  | "resolved"
+  | "rejected"
+  | "duplicate"
+  | "needs_more_information";
 export type ReportUrgency = "Low" | "Medium" | "High" | "Emergency";
 export type ReportCategory =
   | "Flooding"
@@ -33,6 +41,16 @@ export type CommunityReport = {
   createdAt?: string;
 };
 
+export type ReportUpdate = {
+  id: string;
+  reportId: string;
+  status: ReportStatus;
+  note: string | null;
+  responsibleServiceArea: string | null;
+  isPublic: boolean;
+  createdAt: string;
+};
+
 export const reportCategories: ReportCategory[] = [
   "Flooding",
   "Blocked Drain",
@@ -46,8 +64,52 @@ export const reportCategories: ReportCategory[] = [
   "Community Safety"
 ];
 
-export const reportStatuses: ReportStatus[] = ["Logged", "Needs review", "In review", "Open", "Resolved"];
+export const reportStatuses: ReportStatus[] = [
+  "needs_review",
+  "verified",
+  "assigned",
+  "in_progress",
+  "resolved",
+  "rejected",
+  "duplicate",
+  "needs_more_information"
+];
 export const reportUrgencies: ReportUrgency[] = ["Low", "Medium", "High", "Emergency"];
+
+export const reportStatusLabels: Record<ReportStatus, string> = {
+  needs_review: "Needs review",
+  verified: "Verified",
+  assigned: "Assigned",
+  in_progress: "In progress",
+  resolved: "Resolved",
+  rejected: "Rejected",
+  duplicate: "Duplicate",
+  needs_more_information: "Needs more information"
+};
+
+const legacyStatusMap: Record<string, ReportStatus> = {
+  Logged: "needs_review",
+  "Needs review": "needs_review",
+  "In review": "verified",
+  Open: "assigned",
+  Resolved: "resolved"
+};
+
+export function getReportStatusLabel(status: ReportStatus) {
+  return reportStatusLabels[status];
+}
+
+export function isReportStatus(value: string): value is ReportStatus {
+  return reportStatuses.includes(value as ReportStatus);
+}
+
+export function normalizeReportStatus(value: string): ReportStatus {
+  if (isReportStatus(value)) {
+    return value;
+  }
+
+  return legacyStatusMap[value] ?? "needs_review";
+}
 
 export function isReportCategory(value: string): value is ReportCategory {
   return reportCategories.includes(value as ReportCategory);
@@ -66,7 +128,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Near the market junction storm drain",
     description: "Water collects along the roadside after rainfall because the drain is filled with silt and waste. Pedestrians are stepping into traffic to avoid the flooded edge.",
     urgency: "High",
-    status: "Needs review",
+    status: "needs_review",
     dateReported: "2026-06-28",
     isDangerous: true,
     responsibleServiceArea: "Drainage and Roads",
@@ -82,7 +144,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Behind the public transport stop",
     description: "Waste has overflowed around the container and is spreading toward nearby stalls. Residents report strong odor and blocked pedestrian access.",
     urgency: "Medium",
-    status: "Open",
+    status: "assigned",
     dateReported: "2026-06-27",
     isDangerous: false,
     responsibleServiceArea: "Waste Management",
@@ -98,7 +160,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Main road bus stop near the pharmacy",
     description: "Two streetlights have been out for several nights, leaving the bus stop and crossing area dark for commuters.",
     urgency: "Medium",
-    status: "Logged",
+    status: "needs_review",
     dateReported: "2026-06-25",
     isDangerous: false,
     responsibleServiceArea: "Public Lighting",
@@ -113,7 +175,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Busy footbridge beside the main gutter",
     description: "Standing water collects at the footbridge entrance after rainfall, making access difficult for school children, traders, and elderly residents.",
     urgency: "High",
-    status: "In review",
+    status: "verified",
     dateReported: "2026-06-24",
     isDangerous: true,
     responsibleServiceArea: "Drainage and Public Works",
@@ -129,7 +191,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Taxi rank access road",
     description: "Several deep potholes are forcing vehicles into the opposite lane. Motorbike riders slow suddenly, creating risk during peak traffic.",
     urgency: "High",
-    status: "Needs review",
+    status: "needs_review",
     dateReported: "2026-06-22",
     isDangerous: true,
     responsibleServiceArea: "Roads and Transport",
@@ -144,7 +206,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Residential lane behind the clinic",
     description: "An open gutter has stagnant water and visible waste buildup. Residents are concerned about odor, mosquitoes, and drainage during rainfall.",
     urgency: "Medium",
-    status: "Open",
+    status: "assigned",
     dateReported: "2026-06-20",
     isDangerous: false,
     responsibleServiceArea: "Sanitation and Drainage",
@@ -160,7 +222,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Lane beside the public school wall",
     description: "Dirty water is flowing into the roadside gutter throughout the day. The source is unclear, and the smell is affecting nearby classrooms.",
     urgency: "Medium",
-    status: "In review",
+    status: "verified",
     dateReported: "2026-06-18",
     isDangerous: false,
     responsibleServiceArea: "Environmental Health",
@@ -175,7 +237,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Pedestrian walkway near the clinic entrance",
     description: "A section of the walkway rail is broken and leaning into the pedestrian path. People using the clinic entrance have to walk around it.",
     urgency: "Low",
-    status: "Resolved",
+    status: "resolved",
     dateReported: "2026-06-16",
     isDangerous: false,
     responsibleServiceArea: "Public Works",
@@ -190,7 +252,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Food vending area near the junction",
     description: "Wastewater and refuse are collecting beside food stalls. Vendors say the area needs cleaning and better drainage before the next rainfall.",
     urgency: "Medium",
-    status: "Open",
+    status: "assigned",
     dateReported: "2026-06-14",
     isDangerous: false,
     responsibleServiceArea: "Environmental Health",
@@ -205,7 +267,7 @@ export const communityReports: CommunityReport[] = [
     locationDetail: "Primary school entrance on the main road",
     description: "Drivers are speeding near the school entrance during morning drop-off. Residents are asking for better signage and safer crossing support.",
     urgency: "Emergency",
-    status: "Logged",
+    status: "needs_review",
     dateReported: "2026-06-12",
     isDangerous: true,
     responsibleServiceArea: "Community Safety and Roads",

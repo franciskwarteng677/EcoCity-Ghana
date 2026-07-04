@@ -21,7 +21,18 @@ create table if not exists public.reports (
   location_detail text not null default '',
   description text not null check (char_length(description) >= 20),
   urgency text not null check (urgency in ('Low', 'Medium', 'High', 'Emergency')),
-  status text not null default 'Needs review' check (status in ('Logged', 'Needs review', 'In review', 'Open', 'Resolved')),
+  status text not null default 'needs_review' check (
+    status in (
+      'needs_review',
+      'verified',
+      'assigned',
+      'in_progress',
+      'resolved',
+      'rejected',
+      'duplicate',
+      'needs_more_information'
+    )
+  ),
   service_area text not null,
   danger_noted boolean not null default false,
   evidence_label text,
@@ -39,10 +50,57 @@ create index if not exists reports_urgency_idx on public.reports (urgency);
 create index if not exists reports_category_idx on public.reports (category);
 create index if not exists reports_community_idx on public.reports (community);
 
+alter table public.reports alter column status set default 'needs_review';
+alter table public.reports drop constraint if exists reports_status_check;
+
+update public.reports
+set status = case status
+  when 'Logged' then 'needs_review'
+  when 'Needs review' then 'needs_review'
+  when 'In review' then 'verified'
+  when 'Open' then 'assigned'
+  when 'Resolved' then 'resolved'
+  else status
+end;
+
+alter table public.reports add constraint reports_status_check check (
+  status in (
+    'needs_review',
+    'verified',
+    'assigned',
+    'in_progress',
+    'resolved',
+    'rejected',
+    'duplicate',
+    'needs_more_information'
+  )
+);
+
+create table if not exists public.report_updates (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid references public.reports(id) on delete cascade,
+  status text,
+  note text,
+  responsible_service_area text,
+  is_public boolean not null default true,
+  created_at timestamptz default now()
+);
+
+alter table public.report_updates add column if not exists is_public boolean;
+alter table public.report_updates alter column is_public set default true;
+update public.report_updates set is_public = true where is_public is null;
+alter table public.report_updates alter column is_public set not null;
+
+create index if not exists report_updates_report_id_idx on public.report_updates (report_id);
+create index if not exists report_updates_created_at_idx on public.report_updates (created_at desc);
+create index if not exists report_updates_public_idx on public.report_updates (is_public);
+
 alter table public.reports enable row level security;
+alter table public.report_updates enable row level security;
 
 drop policy if exists "Reports are publicly readable" on public.reports;
 drop policy if exists "Anyone can submit reports" on public.reports;
+drop policy if exists "Public report updates are readable" on public.report_updates;
 
 create policy "Reports are publicly readable"
 on public.reports
@@ -68,9 +126,15 @@ with check (
     'Community Safety'
   )
   and urgency in ('Low', 'Medium', 'High', 'Emergency')
-  and status in ('Logged', 'Needs review', 'In review', 'Open', 'Resolved')
+  and status = 'needs_review'
 );
+
+create policy "Public report updates are readable"
+on public.report_updates
+for select
+to anon, authenticated
+using (is_public = true);
 
 grant usage on schema public to anon, authenticated;
 grant select, insert on public.reports to anon, authenticated;
-
+grant select on public.report_updates to anon, authenticated;

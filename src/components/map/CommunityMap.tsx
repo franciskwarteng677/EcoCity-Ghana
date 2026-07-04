@@ -7,6 +7,7 @@ import {
   reportCategories,
   reportStatuses,
   reportUrgencies,
+  getReportStatusLabel,
   type CommunityReport,
   type ReportStatus,
   type ReportUrgency
@@ -92,11 +93,13 @@ function SelectFilter({
   label,
   value,
   options,
+  getOptionLabel,
   onChange
 }: {
   label: string;
   value: string;
   options: string[];
+  getOptionLabel?: (value: string) => string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -110,7 +113,7 @@ function SelectFilter({
         <option value="">All</option>
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {getOptionLabel ? getOptionLabel(option) : option}
           </option>
         ))}
       </select>
@@ -280,7 +283,7 @@ export function CommunityMap() {
           <div className="grid gap-4 md:grid-cols-3">
             <SelectFilter label="Category" value={filters.category} options={categories} onChange={(value) => updateFilter("category", value)} />
             <SelectFilter label="Urgency" value={filters.urgency} options={reportUrgencies} onChange={(value) => updateFilter("urgency", value)} />
-            <SelectFilter label="Status" value={filters.status} options={reportStatuses} onChange={(value) => updateFilter("status", value)} />
+            <SelectFilter label="Status" value={filters.status} options={reportStatuses} getOptionLabel={(value) => getReportStatusLabel(value as ReportStatus)} onChange={(value) => updateFilter("status", value)} />
           </div>
           <button
             type="button"
