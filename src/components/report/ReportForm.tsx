@@ -1,10 +1,11 @@
 "use client";
 
-import type { FormEvent } from "react";
-import { useCallback, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Camera, Info, LocateFixed, Loader2, Search, Send, ShieldAlert } from "lucide-react";
 import { isReportCategory, isReportUrgency } from "@/data/communityReports";
-import { submitCommunityReport, type NewCommunityReport } from "@/lib/reports";
+import { EvidenceUploadError, submitCommunityReport, type NewCommunityReport } from "@/lib/reports";
+import { formatEvidenceFileSize, validateEvidenceFile } from "@/lib/evidence";
 import { CategorySelector } from "./CategorySelector";
 import { FormField } from "./FormField";
 import { LocationPicker } from "./LocationPicker";
@@ -200,6 +201,8 @@ export function ReportForm() {
   const [formData, setFormData] = useState<ReportFormData>(initialFormData);
   const [errors, setErrors] = useState<ReportFormErrors>({});
   const [preparedReport, setPreparedReport] = useState<ReportFormData | null>(null);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidencePreviewUrl, setEvidencePreviewUrl] = useState<string | null>(null);
   const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -208,6 +211,36 @@ export function ReportForm() {
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [submittedReportMapped, setSubmittedReportMapped] = useState<boolean | undefined>(undefined);
+  const evidenceInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (evidencePreviewUrl) {
+        URL.revokeObjectURL(evidencePreviewUrl);
+      }
+    };
+  }, [evidencePreviewUrl]);
+
+  function setNextEvidencePreviewUrl(nextUrl: string | null) {
+    setEvidencePreviewUrl((currentUrl) => {
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
+      }
+
+      return nextUrl;
+    });
+  }
+
+  function clearEvidenceFile() {
+    setEvidenceFile(null);
+    setNextEvidencePreviewUrl(null);
+    setFormData((current) => ({ ...current, evidenceName: "" }));
+    setErrors((current) => ({ ...current, evidenceName: undefined }));
+
+    if (evidenceInputRef.current) {
+      evidenceInputRef.current.value = "";
+    }
+  }
 
   function updateField<Field extends keyof ReportFormData>(field: Field, value: ReportFormData[Field]) {
     setFormData((current) => ({ ...current, [field]: value }));
@@ -218,6 +251,35 @@ export function ReportForm() {
     setSubmitError(null);
     setLocationMessage(null);
     setLocationError(null);
+  }
+
+  function handleEvidenceFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFile = event.target.files?.[0] ?? null;
+    setPreparedReport(null);
+    setSubmittedReportId(null);
+    setSubmittedReportMapped(undefined);
+    setSubmitError(null);
+
+    if (!selectedFile) {
+      clearEvidenceFile();
+      return;
+    }
+
+    const validationError = validateEvidenceFile(selectedFile);
+
+    if (validationError) {
+      setEvidenceFile(null);
+      setNextEvidencePreviewUrl(null);
+      setFormData((current) => ({ ...current, evidenceName: "" }));
+      setErrors((current) => ({ ...current, evidenceName: validationError }));
+      event.target.value = "";
+      return;
+    }
+
+    setEvidenceFile(selectedFile);
+    setNextEvidencePreviewUrl(URL.createObjectURL(selectedFile));
+    setFormData((current) => ({ ...current, evidenceName: selectedFile.name }));
+    setErrors((current) => ({ ...current, evidenceName: undefined }));
   }
 
   const setReportCoordinates = useCallback((coordinates: { latitude: number; longitude: number }, message: string) => {
@@ -333,7 +395,16 @@ export function ReportForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextErrors = validateForm(formData);
+
+    if (isSubmitting) {
+      return;
+    }
+
+    const evidenceError = evidenceFile ? validateEvidenceFile(evidenceFile) : null;
+    const nextErrors = {
+      ...validateForm(formData),
+      ...(evidenceError ? { evidenceName: evidenceError } : {})
+    };
     setErrors(nextErrors);
     setSubmitError(null);
 
@@ -353,17 +424,38 @@ export function ReportForm() {
     setIsSubmitting(true);
 
     try {
-      const savedReport = await submitCommunityReport(newReport);
+      const savedReport = await submitCommunityReport(newReport, evidenceFile);
       const isMapped = typeof savedReport.latitude === "number" && typeof savedReport.longitude === "number";
       setPreparedReport(sanitizedData);
       setSubmittedReportId(savedReport.id);
       setSubmittedReportMapped(isMapped);
       setFormData(initialFormData);
+      setEvidenceFile(null);
+      setNextEvidencePreviewUrl(null);
+
+      if (evidenceInputRef.current) {
+        evidenceInputRef.current.value = "";
+      }
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Unable to submit this report right now.");
+      if (error instanceof EvidenceUploadError) {
+        setSubmitError("The report could not be saved because the evidence image failed to upload. Please try again or submit without evidence.");
+        return;
+      }
+
+      const detail = error instanceof Error ? error.message : "Please try again.";
+      setSubmitError(`We could not save this report. ${detail}`);
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function handleSubmitAnother() {
+    setPreparedReport(null);
+    setSubmittedReportId(null);
+    setSubmittedReportMapped(undefined);
+    setSubmitError(null);
+    setErrors({});
+    clearEvidenceFile();
   }
 
   const previewReport = preparedReport ?? (hasDraftContent(formData) ? formData : null);
@@ -377,7 +469,7 @@ export function ReportForm() {
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-start">
       <form className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6" onSubmit={handleSubmit} noValidate>
         <div className="grid gap-6">
-          {submittedReportId ? <SubmissionNotice reportId={submittedReportId} isMapped={submittedReportMapped} /> : null}
+          {submittedReportId ? <SubmissionNotice reportId={submittedReportId} isMapped={submittedReportMapped} onSubmitAnother={handleSubmitAnother} /> : null}
 
           {submitError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800" role="alert">
@@ -532,20 +624,45 @@ export function ReportForm() {
             </span>
           </label>
 
-          <FormField id="evidence" label="Evidence or photo" hint="Photo selection is for review preparation only. Files are not uploaded or stored.">
+          <FormField id="evidence" label="Evidence or photo" hint="Optional: add a clear photo only if it is safe to collect evidence. JPG, PNG, and WebP images up to 20MB are supported. Avoid private details.">
             <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-civic-500 bg-civic-50 px-4 py-7 text-center transition hover:bg-civic-100">
               <Camera className="h-8 w-8 text-civic-700" aria-hidden="true" />
               <span className="mt-3 text-sm font-bold text-ink">{formData.evidenceName || "Choose a photo or evidence file"}</span>
-              <span className="mt-1 text-xs text-slate-600">PNG, JPG, or PDF details can be selected locally.</span>
+              <span className="mt-1 text-xs text-slate-600">Images are uploaded with the report and may be publicly visible.</span>
               <input
+                ref={evidenceInputRef}
                 id="evidence"
                 type="file"
-                accept="image/png,image/jpeg,application/pdf"
+                accept="image/jpeg,image/png,image/webp"
                 className="sr-only"
-                onChange={(event) => updateField("evidenceName", event.target.files?.[0]?.name ?? "")}
-                aria-describedby="evidence-hint"
+                onChange={handleEvidenceFileChange}
+                aria-describedby={errors.evidenceName ? "evidence-error evidence-hint" : "evidence-hint"}
               />
             </label>
+            {errors.evidenceName ? (
+              <p id="evidence-error" className="mt-2 text-sm font-semibold text-red-700">
+                {errors.evidenceName}
+              </p>
+            ) : null}
+            {evidenceFile && evidencePreviewUrl ? (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                <div className="overflow-hidden rounded-md bg-slate-100">
+                  <img src={evidencePreviewUrl} alt="Selected evidence preview" className="max-h-72 w-full object-contain" />
+                </div>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-semibold text-slate-700">
+                    {evidenceFile.name} · {formatEvidenceFileSize(evidenceFile.size)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={clearEvidenceFile}
+                    className="inline-flex h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-civic-300 hover:text-civic-700"
+                  >
+                    Remove image
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </FormField>
 
           <div className="grid gap-5 md:grid-cols-2">
@@ -593,10 +710,10 @@ export function ReportForm() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-civic-700 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-civic-900 focus:outline-none focus:ring-2 focus:ring-civic-700 focus:ring-offset-2 sm:w-fit"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-civic-700 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-civic-900 focus:outline-none focus:ring-2 focus:ring-civic-700 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 sm:w-fit"
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
-            {isSubmitting ? "Submitting report" : "Submit report"}
+            {isSubmitting ? "Submitting report..." : "Submit report"}
           </button>
         </div>
       </form>

@@ -13,6 +13,11 @@ export type CommunityReportRow = {
   service_area: string;
   danger_noted: boolean;
   evidence_label: string | null;
+  evidence_file_name: string | null;
+  evidence_file_path: string | null;
+  evidence_public_url: string | null;
+  evidence_mime_type: string | null;
+  evidence_size_bytes: number | null;
   contact_preference: string | null;
   reporter_name: string | null;
   reporter_contact: string | null;
@@ -40,6 +45,7 @@ export type ReportUpdateInsert = {
 };
 
 export type CommunityReportInsert = {
+  id?: string;
   category: ReportCategory;
   title: string;
   community: string;
@@ -50,6 +56,11 @@ export type CommunityReportInsert = {
   service_area: string;
   danger_noted: boolean;
   evidence_label?: string | null;
+  evidence_file_name?: string | null;
+  evidence_file_path?: string | null;
+  evidence_public_url?: string | null;
+  evidence_mime_type?: string | null;
+  evidence_size_bytes?: number | null;
   contact_preference?: string | null;
   reporter_name?: string | null;
   reporter_contact?: string | null;

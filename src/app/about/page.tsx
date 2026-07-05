@@ -5,6 +5,7 @@ export default function AboutPage() {
     "Citizen issue reporting for environmental, infrastructure, and safety concerns",
     "Supabase-backed report persistence for submitted community reports",
     "Community report register with search, category, status, and urgency filters",
+    "Optional image evidence uploads for reports when it is safe to collect a photo",
     "Dashboard analytics for report volume, urgency, hotspots, and service areas",
     "Map-based issue visibility when reports include location data",
     "Reports without map location are still saved and shown in reports and dashboard views"
@@ -13,7 +14,6 @@ export default function AboutPage() {
   const futureDirection = [
     "Verified reports",
     "Local authority response tracking",
-    "Image evidence uploads",
     "Community alerts",
     "Low-bandwidth reporting options",
     "Admin review tools"

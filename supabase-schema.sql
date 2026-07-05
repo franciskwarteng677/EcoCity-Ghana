@@ -36,6 +36,11 @@ create table if not exists public.reports (
   service_area text not null,
   danger_noted boolean not null default false,
   evidence_label text,
+  evidence_file_name text,
+  evidence_file_path text,
+  evidence_public_url text,
+  evidence_mime_type text,
+  evidence_size_bytes integer,
   contact_preference text,
   reporter_name text,
   reporter_contact text,
@@ -49,6 +54,12 @@ create index if not exists reports_status_idx on public.reports (status);
 create index if not exists reports_urgency_idx on public.reports (urgency);
 create index if not exists reports_category_idx on public.reports (category);
 create index if not exists reports_community_idx on public.reports (community);
+
+alter table public.reports add column if not exists evidence_file_name text;
+alter table public.reports add column if not exists evidence_file_path text;
+alter table public.reports add column if not exists evidence_public_url text;
+alter table public.reports add column if not exists evidence_mime_type text;
+alter table public.reports add column if not exists evidence_size_bytes integer;
 
 alter table public.reports alter column status set default 'needs_review';
 alter table public.reports drop constraint if exists reports_status_check;
@@ -134,6 +145,39 @@ on public.report_updates
 for select
 to anon, authenticated
 using (is_public = true);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'report-evidence',
+  'report-evidence',
+  true,
+  20971520,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update
+set
+  public = true,
+  file_size_limit = 20971520,
+  allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp'];
+
+drop policy if exists "Report evidence images are publicly readable" on storage.objects;
+drop policy if exists "Anyone can upload report evidence images" on storage.objects;
+
+create policy "Report evidence images are publicly readable"
+on storage.objects
+for select
+to anon, authenticated
+using (bucket_id = 'report-evidence');
+
+create policy "Anyone can upload report evidence images"
+on storage.objects
+for insert
+to anon, authenticated
+with check (
+  bucket_id = 'report-evidence'
+  and (storage.foldername(name))[1] = 'reports'
+  and lower(storage.extension(name)) in ('jpg', 'jpeg', 'png', 'webp')
+);
 
 grant usage on schema public to anon, authenticated;
 grant select, insert on public.reports to anon, authenticated;

@@ -6,6 +6,7 @@ import {
   normalizeReportStatus
 } from "@/data/communityReports";
 import { getSupabaseClient, isSupabaseConfigured, type CommunityReportInsert, type CommunityReportRow, type ReportUpdateRow } from "./supabase";
+import { createEvidenceStoragePath, REPORT_EVIDENCE_BUCKET, validateEvidenceFile, type EvidenceMetadata } from "./evidence";
 
 export type ReportDataSource = "supabase" | "sample";
 
@@ -15,6 +16,7 @@ export type ReportsResult = {
 };
 
 export type NewCommunityReport = {
+  id?: string;
   category: ReportCategory;
   title: string;
   community: string;
@@ -23,12 +25,24 @@ export type NewCommunityReport = {
   urgency: CommunityReport["urgency"];
   dangerNoted: boolean;
   evidenceLabel?: string | null;
+  evidenceFileName?: string | null;
+  evidenceFilePath?: string | null;
+  evidencePublicUrl?: string | null;
+  evidenceMimeType?: string | null;
+  evidenceSizeBytes?: number | null;
   contactPreference?: string | null;
   reporterName?: string | null;
   reporterContact?: string | null;
   latitude?: number | null;
   longitude?: number | null;
 };
+
+export class EvidenceUploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EvidenceUploadError";
+  }
+}
 
 export type ReportWithUpdates = {
   report: CommunityReport;
@@ -62,6 +76,24 @@ function sortNewestFirst(reports: CommunityReport[]) {
   });
 }
 
+function getEvidencePublicUrl(filePath: string | null, publicUrl: string | null) {
+  if (publicUrl) {
+    return publicUrl;
+  }
+
+  if (!filePath) {
+    return null;
+  }
+
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  return supabase.storage.from(REPORT_EVIDENCE_BUCKET).getPublicUrl(filePath).data.publicUrl;
+}
+
 export function mapReportRowToCommunityReport(row: CommunityReportRow): CommunityReport {
   return {
     id: row.id,
@@ -76,6 +108,11 @@ export function mapReportRowToCommunityReport(row: CommunityReportRow): Communit
     isDangerous: row.danger_noted,
     responsibleServiceArea: row.service_area,
     evidenceLabel: row.evidence_label ?? undefined,
+    evidenceFileName: row.evidence_file_name,
+    evidenceFilePath: row.evidence_file_path,
+    evidencePublicUrl: getEvidencePublicUrl(row.evidence_file_path, row.evidence_public_url),
+    evidenceMimeType: row.evidence_mime_type,
+    evidenceSizeBytes: row.evidence_size_bytes,
     contactPreference: row.contact_preference,
     reporterName: row.reporter_name,
     reporterContact: row.reporter_contact,
@@ -86,7 +123,8 @@ export function mapReportRowToCommunityReport(row: CommunityReportRow): Communit
 }
 
 export function mapNewReportToInsert(report: NewCommunityReport): CommunityReportInsert {
-  return {
+  const insert: CommunityReportInsert = {
+    id: report.id,
     category: report.category,
     title: report.title,
     community: report.community,
@@ -102,6 +140,64 @@ export function mapNewReportToInsert(report: NewCommunityReport): CommunityRepor
     reporter_contact: report.reporterContact || null,
     latitude: report.latitude ?? null,
     longitude: report.longitude ?? null
+  };
+
+  if (report.evidenceFileName || report.evidenceFilePath || report.evidencePublicUrl || report.evidenceMimeType || report.evidenceSizeBytes) {
+    insert.evidence_file_name = report.evidenceFileName || null;
+    insert.evidence_file_path = report.evidenceFilePath || null;
+    insert.evidence_public_url = report.evidencePublicUrl || null;
+    insert.evidence_mime_type = report.evidenceMimeType || null;
+    insert.evidence_size_bytes = report.evidenceSizeBytes ?? null;
+  }
+
+  return insert;
+}
+
+function createUuid() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const randomValue = Math.floor(Math.random() * 16);
+    const value = character === "x" ? randomValue : (randomValue & 0x3) | 0x8;
+
+    return value.toString(16);
+  });
+}
+
+async function uploadEvidenceFile(reportId: string, file: File): Promise<EvidenceMetadata> {
+  const validationError = validateEvidenceFile(file);
+
+  if (validationError) {
+    throw new EvidenceUploadError(validationError);
+  }
+
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new EvidenceUploadError("Supabase environment variables are required before evidence can be uploaded.");
+  }
+
+  const filePath = createEvidenceStoragePath(reportId, file);
+  const { error } = await supabase.storage.from(REPORT_EVIDENCE_BUCKET).upload(filePath, file, {
+    cacheControl: "3600",
+    contentType: file.type,
+    upsert: false
+  });
+
+  if (error) {
+    throw new EvidenceUploadError(error.message);
+  }
+
+  const { data } = supabase.storage.from(REPORT_EVIDENCE_BUCKET).getPublicUrl(filePath);
+
+  return {
+    fileName: file.name,
+    filePath,
+    publicUrl: data.publicUrl,
+    mimeType: file.type,
+    sizeBytes: file.size
   };
 }
 
@@ -189,16 +285,29 @@ export async function fetchCommunityReportById(id: string): Promise<ReportWithUp
   };
 }
 
-export async function submitCommunityReport(report: NewCommunityReport) {
+export async function submitCommunityReport(report: NewCommunityReport, evidenceFile?: File | null) {
   const supabase = getSupabaseClient();
 
   if (!supabase) {
     throw new Error("Supabase environment variables are required before reports can be saved.");
   }
 
+  const reportId = report.id ?? createUuid();
+  const evidenceMetadata = evidenceFile ? await uploadEvidenceFile(reportId, evidenceFile) : null;
+  const reportWithEvidence: NewCommunityReport = {
+    ...report,
+    id: reportId,
+    evidenceLabel: evidenceMetadata?.fileName ?? report.evidenceLabel ?? null,
+    evidenceFileName: evidenceMetadata?.fileName ?? report.evidenceFileName ?? null,
+    evidenceFilePath: evidenceMetadata?.filePath ?? report.evidenceFilePath ?? null,
+    evidencePublicUrl: evidenceMetadata?.publicUrl ?? report.evidencePublicUrl ?? null,
+    evidenceMimeType: evidenceMetadata?.mimeType ?? report.evidenceMimeType ?? null,
+    evidenceSizeBytes: evidenceMetadata?.sizeBytes ?? report.evidenceSizeBytes ?? null
+  };
+
   const { data, error } = await supabase
     .from("reports")
-    .insert(mapNewReportToInsert(report))
+    .insert(mapNewReportToInsert(reportWithEvidence))
     .select("*")
     .single();
 

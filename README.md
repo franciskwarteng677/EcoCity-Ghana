@@ -6,9 +6,9 @@ The app uses Next.js App Router, TypeScript, Tailwind CSS, MapLibre/MapTiler, an
 
 ## Report Submission
 
-Residents submit reports at `/report` with category, community, location detail, description, urgency, danger signal, optional evidence label, optional contact preference, and optional map coordinates. New reports are saved with the `needs_review` workflow status.
+Residents submit reports at `/report` with category, community, location detail, description, urgency, danger signal, optional evidence image, optional contact preference, and optional map coordinates. New reports are saved with the `needs_review` workflow status.
 
-Reports can include browser location, a dropped map pin, typed-location search, manual coordinates, or only a descriptive location. Reports without coordinates are still saved and reviewed.
+Reports can include browser location, a dropped map pin, typed-location search, manual coordinates, or only a descriptive location. Reports without coordinates are still saved and reviewed. Evidence images are optional and should only be added when it is safe to collect them.
 
 ## Supabase Persistence
 
@@ -16,10 +16,36 @@ Run `supabase-schema.sql` in the Supabase SQL editor before using the app with a
 
 - `reports` for submitted community reports.
 - `report_updates` for public civic response timeline entries.
+- `report-evidence` Supabase Storage bucket setup for uploaded evidence images.
 - RLS policies that allow public report submission and public reads.
 - Public `report_updates` reads only where `is_public = true`.
 
 Public users are not granted report update permissions. Admin status changes are handled by a server-side API route.
+
+## Evidence Images
+
+Evidence images use the Supabase Storage bucket:
+
+```text
+report-evidence
+```
+
+For the MVP, the bucket is public so evidence images can be displayed on public report pages. That means uploaded evidence is visible to anyone who can view the report. Citizens should not upload private, unsafe, or sensitive images.
+
+Supported upload types:
+
+- JPG / JPEG
+- PNG
+- WebP
+
+The app limits evidence image uploads to 20MB. The SQL schema also configures the bucket with the same file size limit and MIME type list where Supabase Storage supports those bucket settings.
+
+Setup steps:
+
+- Run the updated `supabase-schema.sql`.
+- Confirm the `report-evidence` bucket exists in Supabase Storage.
+- Keep the bucket public for this MVP, or configure an equivalent public read policy.
+- Confirm anonymous users can upload to `report-evidence/reports/...` through the storage policy.
 
 ## Public Reports
 
@@ -29,7 +55,7 @@ Public users are not granted report update permissions. Admin status changes are
 - Approximate location only
 - Needs map location
 
-Each report links to `/reports/[id]`, which shows the full report details and public update timeline.
+Each report links to `/reports/[id]`, which shows the full report details, evidence image if attached, and public update timeline.
 
 ## Map Behavior
 
@@ -41,7 +67,7 @@ Each report links to `/reports/[id]`, which shows the full report details and pu
 
 ## Admin Review Workflow
 
-`/admin` is an MVP review console. Reviewers can filter reports, select a report, update its status, assign a responsible service area, and add a public update note. Saves go through `/api/admin/reports`, which checks `ADMIN_REVIEW_CODE` on the server and uses the Supabase service role key only server-side.
+`/admin` is an MVP review console. Reviewers can filter reports, select a report, inspect attached evidence, update its status, assign a responsible service area, and add a public update note. Saves go through `/api/admin/reports`, which checks `ADMIN_REVIEW_CODE` on the server and uses the Supabase service role key only server-side.
 
 Workflow statuses:
 

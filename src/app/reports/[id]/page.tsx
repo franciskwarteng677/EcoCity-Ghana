@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/reports/StatusBadge";
 import { UrgencyBadge } from "@/components/reports/UrgencyBadge";
 import { fetchCommunityReportById } from "@/lib/reports";
 import { getReportStatusLabel } from "@/data/communityReports";
+import { formatEvidenceFileSize } from "@/lib/evidence";
 
 type ReportDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -37,6 +38,7 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
   }
 
   const { report, updates, source } = result;
+  const evidenceImageUrl = report.evidencePublicUrl || null;
 
   return (
     <PageShell eyebrow="Report Detail" title={report.title} description="Review the full public record for this community report and its civic response timeline.">
@@ -73,8 +75,35 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
           <DetailItem icon={MapPin} label="Location detail" value={report.locationDetail || "Approximate location only"} />
           <DetailItem icon={Wrench} label="Responsible service area" value={report.responsibleServiceArea || "Not assigned yet"} />
           <DetailItem icon={ShieldAlert} label="Danger signal" value={report.isDangerous ? "Danger noted" : "No danger signal noted"} />
-          <DetailItem icon={Camera} label="Evidence" value={report.evidenceLabel ?? "No evidence label recorded"} />
+          <DetailItem icon={Camera} label="Evidence" value={evidenceImageUrl ? "Evidence image attached" : report.evidenceLabel ?? "No evidence image was attached."} />
           <DetailItem icon={CalendarDays} label="Date submitted" value={formatDate(report.dateReported)} />
+        </section>
+
+        <section className="rounded-lg border border-civic-100 bg-white p-5 shadow-sm" aria-labelledby="evidence-heading">
+          <div>
+            <h2 id="evidence-heading" className="text-xl font-bold tracking-normal text-ink">
+              Evidence
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Photo evidence submitted with this community report.</p>
+          </div>
+
+          {evidenceImageUrl ? (
+            <div className="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+              <img src={evidenceImageUrl} alt={`Evidence image for ${report.title}`} className="max-h-[560px] w-full object-contain" />
+              <div className="border-t border-slate-200 bg-white p-4">
+                <p className="text-sm font-bold text-ink">{report.evidenceFileName || report.evidenceLabel || "Evidence image"}</p>
+                {report.evidenceSizeBytes ? (
+                  <p className="mt-1 text-sm font-semibold text-slate-600">{formatEvidenceFileSize(report.evidenceSizeBytes)}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : report.evidenceLabel ? (
+            <p className="mt-5 rounded-md bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">{report.evidenceLabel}</p>
+          ) : (
+            <p className="mt-5 rounded-md bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
+              No evidence image was attached.
+            </p>
+          )}
         </section>
 
         <section className="rounded-lg border border-civic-100 bg-white p-5 shadow-sm" aria-labelledby="public-updates-heading">

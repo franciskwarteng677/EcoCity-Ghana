@@ -17,6 +17,8 @@ export function ReportDetailPanel({ report }: ReportDetailPanelProps) {
     );
   }
 
+  const hasEvidenceImage = Boolean(report.evidencePublicUrl || report.evidenceFilePath);
+
   return (
     <aside className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-28">
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-civic-700">{report.id}</p>
@@ -72,7 +74,7 @@ export function ReportDetailPanel({ report }: ReportDetailPanelProps) {
             <p>
               <span className="font-bold text-ink">Evidence</span>
               <br />
-              {report.evidenceLabel ?? "No evidence label recorded"}
+              {hasEvidenceImage ? "Evidence image attached" : report.evidenceLabel ?? "No evidence image was attached."}
             </p>
           </div>
         </div>

@@ -33,6 +33,11 @@ export type CommunityReport = {
   isDangerous: boolean;
   responsibleServiceArea: string;
   evidenceLabel?: string;
+  evidenceFileName?: string | null;
+  evidenceFilePath?: string | null;
+  evidencePublicUrl?: string | null;
+  evidenceMimeType?: string | null;
+  evidenceSizeBytes?: number | null;
   contactPreference?: string | null;
   reporterName?: string | null;
   reporterContact?: string | null;

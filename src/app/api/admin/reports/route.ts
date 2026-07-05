@@ -1,15 +1,72 @@
 import { NextResponse } from "next/server";
-import { isReportStatus, type ReportStatus } from "@/data/communityReports";
+import { isReportStatus, normalizeReportStatus, type ReportStatus } from "@/data/communityReports";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
+import type { ReportUpdateRow } from "@/lib/supabase";
+
+type AdminAction = "list_updates" | "create_update" | "update_update" | "delete_update";
 
 type AdminUpdateRequest = {
+  action?: AdminAction;
   adminCode?: string;
   reportId?: string;
+  updateId?: string;
   status?: string;
   responsibleServiceArea?: string;
   note?: string;
   isPublic?: boolean;
 };
+
+type SupabaseAdminClient = NonNullable<ReturnType<typeof getSupabaseAdminClient>>;
+
+function mapUpdate(row: ReportUpdateRow) {
+  return {
+    id: row.id,
+    reportId: row.report_id,
+    status: normalizeReportStatus(row.status),
+    note: row.note,
+    responsibleServiceArea: row.responsible_service_area,
+    isPublic: row.is_public,
+    createdAt: row.created_at
+  };
+}
+
+async function fetchReportUpdates(supabase: SupabaseAdminClient, reportId: string) {
+  const { data, error } = await supabase
+    .from("report_updates")
+    .select("*")
+    .eq("report_id", reportId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map(mapUpdate);
+}
+
+async function syncReportFromReviewHistory(supabase: SupabaseAdminClient, reportId: string, updates: ReturnType<typeof mapUpdate>[]) {
+  const latestUpdate = updates[0];
+  const reportUpdate: { status: ReportStatus; service_area?: string } = {
+    status: latestUpdate?.status ?? "needs_review"
+  };
+
+  if (latestUpdate?.responsibleServiceArea) {
+    reportUpdate.service_area = latestUpdate.responsibleServiceArea;
+  }
+
+  const { data, error } = await supabase
+    .from("reports")
+    .update(reportUpdate)
+    .eq("id", reportId)
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
 
 export async function POST(request: Request) {
   const configuredCode = process.env.ADMIN_REVIEW_CODE;
@@ -24,47 +81,114 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid admin review code." }, { status: 401 });
   }
 
-  if (!body.reportId || !body.status || !isReportStatus(body.status)) {
-    return NextResponse.json({ error: "Report id and a valid status are required." }, { status: 400 });
-  }
-
   const supabase = getSupabaseAdminClient();
 
   if (!supabase) {
     return NextResponse.json({ error: "Supabase admin credentials are not configured." }, { status: 500 });
   }
 
-  const status = body.status as ReportStatus;
-  const responsibleServiceArea = body.responsibleServiceArea?.trim() || null;
-  const note = body.note?.trim() || null;
-  const reportUpdate: { status: ReportStatus; service_area?: string } = { status };
+  const action = body.action ?? "create_update";
 
-  if (responsibleServiceArea) {
-    reportUpdate.service_area = responsibleServiceArea;
+  if (!body.reportId) {
+    return NextResponse.json({ error: "Report id is required." }, { status: 400 });
   }
 
-  const { data: updatedReport, error: reportError } = await supabase
-    .from("reports")
-    .update(reportUpdate)
-    .eq("id", body.reportId)
-    .select("*")
-    .single();
+  try {
+    if (action === "list_updates") {
+      const updates = await fetchReportUpdates(supabase, body.reportId);
 
-  if (reportError) {
-    return NextResponse.json({ error: reportError.message }, { status: 500 });
+      return NextResponse.json({ updates });
+    }
+
+    if (action === "delete_update") {
+      if (!body.updateId) {
+        return NextResponse.json({ error: "Review update id is required." }, { status: 400 });
+      }
+
+      const { error: deleteError } = await supabase
+        .from("report_updates")
+        .delete()
+        .eq("id", body.updateId)
+        .eq("report_id", body.reportId);
+
+      if (deleteError) {
+        throw new Error(deleteError.message);
+      }
+
+      const updates = await fetchReportUpdates(supabase, body.reportId);
+      const report = await syncReportFromReviewHistory(supabase, body.reportId, updates);
+
+      return NextResponse.json({ report, updates });
+    }
+
+    if (!body.status || !isReportStatus(body.status)) {
+      return NextResponse.json({ error: "A valid status is required." }, { status: 400 });
+    }
+
+    const status = body.status as ReportStatus;
+    const responsibleServiceArea = body.responsibleServiceArea?.trim() || null;
+    const note = body.note?.trim() || null;
+    const isPublic = body.isPublic ?? true;
+
+    if (action === "update_update") {
+      if (!body.updateId) {
+        return NextResponse.json({ error: "Review update id is required." }, { status: 400 });
+      }
+
+      const { error: updateError } = await supabase
+        .from("report_updates")
+        .update({
+          status,
+          note,
+          responsible_service_area: responsibleServiceArea,
+          is_public: isPublic
+        })
+        .eq("id", body.updateId)
+        .eq("report_id", body.reportId);
+
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+
+      const updates = await fetchReportUpdates(supabase, body.reportId);
+      const report = await syncReportFromReviewHistory(supabase, body.reportId, updates);
+
+      return NextResponse.json({ report, updates });
+    }
+
+    const reportUpdate: { status: ReportStatus; service_area?: string } = { status };
+
+    if (responsibleServiceArea) {
+      reportUpdate.service_area = responsibleServiceArea;
+    }
+
+    const { data: updatedReport, error: reportError } = await supabase
+      .from("reports")
+      .update(reportUpdate)
+      .eq("id", body.reportId)
+      .select("*")
+      .single();
+
+    if (reportError) {
+      throw new Error(reportError.message);
+    }
+
+    const { error: insertError } = await supabase.from("report_updates").insert({
+      report_id: body.reportId,
+      status,
+      note,
+      responsible_service_area: responsibleServiceArea ?? updatedReport.service_area,
+      is_public: isPublic
+    });
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+
+    const updates = await fetchReportUpdates(supabase, body.reportId);
+
+    return NextResponse.json({ report: updatedReport, updates });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to complete admin review action." }, { status: 500 });
   }
-
-  const { error: updateError } = await supabase.from("report_updates").insert({
-    report_id: body.reportId,
-    status,
-    note,
-    responsible_service_area: responsibleServiceArea ?? updatedReport.service_area,
-    is_public: body.isPublic ?? true
-  });
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ report: updatedReport });
 }
