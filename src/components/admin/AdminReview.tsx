@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Loader2, Pencil, RefreshCw, Save, ShieldCheck, Trash2, X } from "lucide-react";
+import { AlertCircle, Loader2, Pencil, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X } from "lucide-react";
 import {
   getReportStatusLabel,
   normalizeReportStatus,
@@ -33,7 +33,16 @@ type AdminApiResponse = {
   report?: {
     status?: string;
     service_area?: string | null;
+    contact_preference?: string | null;
+    reporter_name?: string | null;
+    reporter_contact?: string | null;
   } | null;
+};
+
+type ReporterContactDetails = {
+  contactPreference: string | null;
+  reporterName: string | null;
+  reporterContact: string | null;
 };
 
 const initialFilters: AdminFilters = {
@@ -54,6 +63,32 @@ function formatDate(value: string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function normalizeOptionalText(value?: string | null) {
+  const trimmedValue = value?.trim();
+
+  return trimmedValue || null;
+}
+
+function getReporterContactDetails(report: AdminApiResponse["report"]): ReporterContactDetails | null {
+  if (!report) {
+    return null;
+  }
+
+  return {
+    contactPreference: normalizeOptionalText(report.contact_preference),
+    reporterName: normalizeOptionalText(report.reporter_name),
+    reporterContact: normalizeOptionalText(report.reporter_contact)
+  };
+}
+
+function getContactPreferenceDisplay(contactPreference: string | null) {
+  if (!contactPreference || contactPreference === "No contact needed") {
+    return "Reporter did not request contact.";
+  }
+
+  return contactPreference;
 }
 
 function matchesFilters(report: CommunityReport, filters: AdminFilters) {
@@ -94,6 +129,65 @@ function FeedbackBanner({ tone, children }: { tone: "success" | "error"; childre
   );
 }
 
+function ContactDetailRow({ label, value, emptyText }: { label: string; value: string | null; emptyText: string }) {
+  return (
+    <div className="rounded-md bg-white p-3">
+      <dt className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{label}</dt>
+      <dd className="mt-1 text-sm font-bold text-ink">{value || "Not provided"}</dd>
+      {!value ? <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{emptyText}</p> : null}
+    </div>
+  );
+}
+
+function ReporterContactSection({
+  details,
+  isLoading,
+  error,
+  hasAdminCode
+}: {
+  details: ReporterContactDetails | null;
+  isLoading: boolean;
+  error: string | null;
+  hasAdminCode: boolean;
+}) {
+  return (
+    <section className="mt-4 rounded-lg border border-civic-100 bg-civic-50 p-4" aria-labelledby="reporter-contact-heading">
+      <div className="flex items-start gap-3">
+        <UserRound className="mt-0.5 h-5 w-5 shrink-0 text-civic-700" aria-hidden="true" />
+        <div>
+          <h4 id="reporter-contact-heading" className="text-sm font-bold text-ink">
+            Reporter contact details
+          </h4>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">Private to admin review. Do not publish these details in public updates.</p>
+        </div>
+      </div>
+
+      {!hasAdminCode ? (
+        <p className="mt-4 rounded-md bg-white p-3 text-sm font-semibold leading-6 text-slate-600">
+          Enter the admin review code to load private reporter contact details for this report.
+        </p>
+      ) : error ? (
+        <p className="mt-4 rounded-md bg-red-50 p-3 text-sm font-semibold leading-6 text-red-700">{error}</p>
+      ) : isLoading && !details ? (
+        <p className="mt-4 rounded-md bg-white p-3 text-sm font-semibold leading-6 text-slate-600">Loading reporter contact details...</p>
+      ) : details ? (
+        <dl className="mt-4 grid gap-3">
+          <div className="rounded-md bg-white p-3">
+            <dt className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Contact preference</dt>
+            <dd className="mt-1 text-sm font-bold text-ink">{getContactPreferenceDisplay(details.contactPreference)}</dd>
+          </div>
+          <ContactDetailRow label="Reporter name" value={details.reporterName} emptyText="No reporter name provided." />
+          <ContactDetailRow label="Phone/email" value={details.reporterContact} emptyText="No phone or email provided." />
+        </dl>
+      ) : (
+        <p className="mt-4 rounded-md bg-white p-3 text-sm font-semibold leading-6 text-slate-600">
+          Reporter contact details are not available for this report.
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function AdminReview() {
   const { reports, source, isLoading, error } = useCommunityReports();
   const [localReports, setLocalReports] = useState<CommunityReport[]>([]);
@@ -108,6 +202,8 @@ export function AdminReview() {
   const [hasLoadedUpdates, setHasLoadedUpdates] = useState(false);
   const [updatesError, setUpdatesError] = useState<string | null>(null);
   const [isLoadingUpdates, setIsLoadingUpdates] = useState(false);
+  const [reporterContactDetails, setReporterContactDetails] = useState<ReporterContactDetails | null>(null);
+  const [reporterContactError, setReporterContactError] = useState<string | null>(null);
   const [editingUpdateId, setEditingUpdateId] = useState<string | null>(null);
   const [deletingUpdateId, setDeletingUpdateId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -128,11 +224,14 @@ export function AdminReview() {
         setReviewUpdates([]);
         setHasLoadedUpdates(false);
         setUpdatesError(null);
+        setReporterContactDetails(null);
+        setReporterContactError(null);
         return;
       }
 
       setIsLoadingUpdates(true);
       setUpdatesError(null);
+      setReporterContactError(null);
 
       try {
         const result = await sendAdminRequest({
@@ -142,13 +241,17 @@ export function AdminReview() {
         });
 
         setReviewUpdates(result.updates ?? []);
+        setReporterContactDetails(getReporterContactDetails(result.report));
         setHasLoadedUpdates(true);
       } catch (error) {
         setReviewUpdates([]);
+        setReporterContactDetails(null);
         setHasLoadedUpdates(false);
 
         if (showErrors) {
-          setUpdatesError(error instanceof Error ? error.message : "Unable to load review history.");
+          const message = error instanceof Error ? error.message : "Unable to load review history.";
+          setUpdatesError(message);
+          setReporterContactError(message);
         }
       } finally {
         setIsLoadingUpdates(false);
@@ -169,6 +272,8 @@ export function AdminReview() {
     setNote("");
     setIsPublic(true);
     setEditingUpdateId(null);
+    setReporterContactDetails(null);
+    setReporterContactError(null);
     setSaveError(null);
     setSaveMessage(null);
   }, [activeReportId]);
@@ -182,6 +287,8 @@ export function AdminReview() {
       setReviewUpdates([]);
       setHasLoadedUpdates(false);
       setUpdatesError(null);
+      setReporterContactDetails(null);
+      setReporterContactError(null);
       return;
     }
 
@@ -279,6 +386,7 @@ export function AdminReview() {
 
       if (result.report) {
         updateSelectedReportFromApi(result.report);
+        setReporterContactDetails(getReporterContactDetails(result.report));
       } else if (!editingUpdateId || isEditingLatestUpdate) {
         updateSelectedReport(status, responsibleServiceArea);
       }
@@ -328,6 +436,7 @@ export function AdminReview() {
       setReviewUpdates(result.updates ?? []);
       setHasLoadedUpdates(true);
       updateSelectedReportFromApi(result.report);
+      setReporterContactDetails(getReporterContactDetails(result.report));
 
       if (editingUpdateId === update.id) {
         cancelEdit();
@@ -492,6 +601,12 @@ export function AdminReview() {
                   <h3 className="mt-2 text-base font-bold text-ink">{selectedReport.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{selectedReport.description}</p>
                   <EvidenceGallery report={selectedReport} compact />
+                  <ReporterContactSection
+                    details={reporterContactDetails}
+                    isLoading={isLoadingUpdates}
+                    error={reporterContactError}
+                    hasAdminCode={Boolean(adminCode.trim())}
+                  />
                 </div>
 
                 <label className="grid gap-2 text-sm font-bold text-ink">

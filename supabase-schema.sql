@@ -60,6 +60,9 @@ alter table public.reports add column if not exists evidence_file_path text;
 alter table public.reports add column if not exists evidence_public_url text;
 alter table public.reports add column if not exists evidence_mime_type text;
 alter table public.reports add column if not exists evidence_size_bytes integer;
+alter table public.reports add column if not exists contact_preference text;
+alter table public.reports add column if not exists reporter_name text;
+alter table public.reports add column if not exists reporter_contact text;
 
 alter table public.reports alter column status set default 'needs_review';
 alter table public.reports drop constraint if exists reports_status_check;
@@ -86,6 +89,29 @@ alter table public.reports add constraint reports_status_check check (
     'needs_more_information'
   )
 );
+
+create or replace view public.public_reports as
+select
+  id,
+  category,
+  title,
+  community,
+  location_detail,
+  description,
+  urgency,
+  status,
+  service_area,
+  danger_noted,
+  evidence_label,
+  evidence_file_name,
+  evidence_file_path,
+  evidence_public_url,
+  evidence_mime_type,
+  evidence_size_bytes,
+  latitude,
+  longitude,
+  created_at
+from public.reports;
 
 create table if not exists public.report_evidence (
   id uuid primary key default gen_random_uuid(),
@@ -130,12 +156,6 @@ drop policy if exists "Report evidence records are publicly readable" on public.
 drop policy if exists "Anyone can add report evidence records" on public.report_evidence;
 drop policy if exists "Public report updates are readable" on public.report_updates;
 
-create policy "Reports are publicly readable"
-on public.reports
-for select
-to anon, authenticated
-using (true);
-
 create policy "Anyone can submit reports"
 on public.reports
 for insert
@@ -155,6 +175,13 @@ with check (
   )
   and urgency in ('Low', 'Medium', 'High', 'Emergency')
   and status = 'needs_review'
+  and (contact_preference is null or char_length(contact_preference) <= 120)
+  and (reporter_name is null or char_length(reporter_name) <= 160)
+  and (reporter_contact is null or char_length(reporter_contact) <= 240)
+  and (
+    contact_preference is distinct from 'Contact me for follow-up'
+    or nullif(btrim(reporter_contact), '') is not null
+  )
 );
 
 create policy "Report evidence records are publicly readable"
@@ -209,6 +236,8 @@ with check (
 );
 
 grant usage on schema public to anon, authenticated;
-grant select, insert on public.reports to anon, authenticated;
+revoke select on public.reports from anon, authenticated;
+grant insert on public.reports to anon, authenticated;
+grant select on public.public_reports to anon, authenticated;
 grant select, insert on public.report_evidence to anon, authenticated;
 grant select on public.report_updates to anon, authenticated;

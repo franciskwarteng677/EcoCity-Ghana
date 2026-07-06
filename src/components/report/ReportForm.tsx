@@ -141,7 +141,7 @@ function validateForm(data: ReportFormData) {
   }
 
   if (data.contactPreference === "Contact me for follow-up" && !data.contactDetail.trim()) {
-    errors.contactDetail = "Enter a phone number or email for follow-up.";
+    errors.contactDetail = "Enter a phone number or email before submitting so reviewers can follow up.";
   }
 
   if (hasLatitude && latitude === null) {
@@ -279,7 +279,11 @@ export function ReportForm() {
 
   function updateField<Field extends keyof ReportFormData>(field: Field, value: ReportFormData[Field]) {
     setFormData((current) => ({ ...current, [field]: value }));
-    setErrors((current) => ({ ...current, [field]: undefined }));
+    setErrors((current) => ({
+      ...current,
+      [field]: undefined,
+      ...(field === "contactPreference" ? { contactDetail: undefined } : {})
+    }));
     setPreparedReport(null);
     setSubmittedReportId(null);
     setSubmittedEvidenceCount(0);
@@ -517,6 +521,7 @@ export function ReportForm() {
   const selectedLatitude = isValidLatitude(parsedLatitude) ? parsedLatitude : null;
   const selectedLongitude = isValidLongitude(parsedLongitude) ? parsedLongitude : null;
   const hasSelectedMapLocation = selectedLatitude !== null && selectedLongitude !== null;
+  const requiresContactDetail = formData.contactPreference === "Contact me for follow-up";
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-start">
@@ -762,21 +767,26 @@ export function ReportForm() {
             </FormField>
           </div>
 
-          <FormField id="contactDetail" label="Phone or email">
+          <FormField
+            id="contactDetail"
+            label="Phone or email"
+            required={requiresContactDetail}
+            error={errors.contactDetail}
+            hint={
+              requiresContactDetail
+                ? "Required for follow-up contact. This is stored for admin review only."
+                : "Optional. Reporter contact details are stored for admin review only."
+            }
+          >
             <input
               id="contactDetail"
               value={formData.contactDetail}
               onChange={(event) => updateField("contactDetail", event.target.value)}
               className={`${inputClass} ${errors.contactDetail ? errorInputClass : ""}`}
               aria-invalid={Boolean(errors.contactDetail)}
-              aria-describedby={errors.contactDetail ? "contactDetail-error" : undefined}
-              placeholder="Optional"
+              aria-describedby={errors.contactDetail ? "contactDetail-error contactDetail-hint" : "contactDetail-hint"}
+              placeholder={requiresContactDetail ? "Phone number or email for follow-up" : "Optional"}
             />
-            {errors.contactDetail ? (
-              <p id="contactDetail-error" className="mt-2 text-sm font-semibold text-red-700">
-                {errors.contactDetail}
-              </p>
-            ) : null}
           </FormField>
 
           <button

@@ -26,6 +26,8 @@ export type CommunityReportRow = {
   created_at: string;
 };
 
+export type PublicCommunityReportRow = Omit<CommunityReportRow, "contact_preference" | "reporter_name" | "reporter_contact">;
+
 export type ReportUpdateRow = {
   id: string;
   report_id: string;
@@ -112,7 +114,14 @@ export type Database = {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      public_reports: {
+        Row: PublicCommunityReportRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+    };
     Functions: Record<string, never>;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

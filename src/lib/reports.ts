@@ -11,6 +11,7 @@ import {
   isSupabaseConfigured,
   type CommunityReportInsert,
   type CommunityReportRow,
+  type PublicCommunityReportRow,
   type ReportEvidenceInsert,
   type ReportEvidenceRow,
   type ReportUpdateRow
@@ -69,6 +70,8 @@ export type ReportWithUpdates = {
   source: ReportDataSource;
 };
 
+type ReadableCommunityReportRow = CommunityReportRow | PublicCommunityReportRow;
+
 const categoryServiceAreas: Record<ReportCategory, string> = {
   Flooding: "Drainage and Public Works",
   "Blocked Drain": "Drainage and Roads",
@@ -126,7 +129,7 @@ function mapEvidenceRowToReportEvidence(row: ReportEvidenceRow): ReportEvidence 
   };
 }
 
-function getLegacyEvidence(row: CommunityReportRow): ReportEvidence | null {
+function getLegacyEvidence(row: ReadableCommunityReportRow): ReportEvidence | null {
   const publicUrl = getEvidencePublicUrl(row.evidence_file_path, row.evidence_public_url);
 
   if (!publicUrl && !row.evidence_file_path) {
@@ -192,9 +195,17 @@ async function fetchReportEvidenceRows(reportIds: string[]) {
   return data ?? [];
 }
 
-export function mapReportRowToCommunityReport(row: CommunityReportRow, evidenceRows: ReportEvidenceRow[] = []): CommunityReport {
+export function mapReportRowToCommunityReport(row: ReadableCommunityReportRow, evidenceRows: ReportEvidenceRow[] = []): CommunityReport {
   const evidence = evidenceRows.length > 0 ? evidenceRows.map(mapEvidenceRowToReportEvidence) : [];
   const legacyEvidence = evidence.length === 0 ? getLegacyEvidence(row) : null;
+  const reporterDetails =
+    "contact_preference" in row
+      ? {
+          contactPreference: row.contact_preference,
+          reporterName: row.reporter_name,
+          reporterContact: row.reporter_contact
+        }
+      : {};
 
   return {
     id: row.id,
@@ -215,9 +226,7 @@ export function mapReportRowToCommunityReport(row: CommunityReportRow, evidenceR
     evidenceMimeType: row.evidence_mime_type,
     evidenceSizeBytes: row.evidence_size_bytes,
     evidence: legacyEvidence ? [legacyEvidence] : evidence,
-    contactPreference: row.contact_preference,
-    reporterName: row.reporter_name,
-    reporterContact: row.reporter_contact,
+    ...reporterDetails,
     latitude: row.latitude,
     longitude: row.longitude,
     createdAt: row.created_at
@@ -253,6 +262,33 @@ export function mapNewReportToInsert(report: NewCommunityReport): CommunityRepor
   }
 
   return insert;
+}
+
+function createInsertedReportRow(report: NewCommunityReport): CommunityReportRow {
+  return {
+    id: report.id ?? createUuid(),
+    category: report.category,
+    title: report.title,
+    community: report.community,
+    location_detail: report.locationDetail,
+    description: report.description,
+    urgency: report.urgency,
+    status: "needs_review",
+    service_area: getServiceAreaForCategory(report.category),
+    danger_noted: report.dangerNoted,
+    evidence_label: report.evidenceLabel ?? null,
+    evidence_file_name: report.evidenceFileName ?? null,
+    evidence_file_path: report.evidenceFilePath ?? null,
+    evidence_public_url: report.evidencePublicUrl ?? null,
+    evidence_mime_type: report.evidenceMimeType ?? null,
+    evidence_size_bytes: report.evidenceSizeBytes ?? null,
+    contact_preference: report.contactPreference ?? null,
+    reporter_name: report.reporterName ?? null,
+    reporter_contact: report.reporterContact ?? null,
+    latitude: report.latitude ?? null,
+    longitude: report.longitude ?? null,
+    created_at: new Date().toISOString()
+  };
 }
 
 function createUuid() {
@@ -362,7 +398,7 @@ export async function fetchCommunityReports(): Promise<ReportsResult> {
     };
   }
 
-  const { data, error } = await supabase.from("reports").select("*").order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("public_reports").select("*").order("created_at", { ascending: false });
 
   if (error) {
     throw new Error(error.message);
@@ -393,7 +429,7 @@ export async function fetchCommunityReportById(id: string): Promise<ReportWithUp
     return sampleReport ? { report: sampleReport, updates: [], source: "sample" } : null;
   }
 
-  const { data: reportData, error: reportError } = await supabase.from("reports").select("*").eq("id", id).single();
+  const { data: reportData, error: reportError } = await supabase.from("public_reports").select("*").eq("id", id).single();
 
   if (reportError) {
     if (reportError.code === "PGRST116") {
@@ -449,11 +485,8 @@ export async function submitCommunityReport(report: NewCommunityReport, evidence
     evidenceSizeBytes: null
   };
 
-  const { data, error } = await supabase
-    .from("reports")
-    .insert(mapNewReportToInsert(reportToSave))
-    .select("*")
-    .single();
+  const savedReportRow = createInsertedReportRow(reportToSave);
+  const { error } = await supabase.from("reports").insert(mapNewReportToInsert(reportToSave));
 
   if (error) {
     throw new Error(error.message);
@@ -468,7 +501,7 @@ export async function submitCommunityReport(report: NewCommunityReport, evidence
 
     const evidenceRows = await saveReportEvidence(reportId, evidenceMetadata);
 
-    return mapReportRowToCommunityReport(data, evidenceRows);
+    return mapReportRowToCommunityReport(savedReportRow, evidenceRows);
   } catch (error) {
     if (error instanceof EvidenceUploadError) {
       throw new EvidenceUploadError(error.message, reportId);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isReportStatus, normalizeReportStatus, type ReportStatus } from "@/data/communityReports";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
-import type { ReportUpdateRow } from "@/lib/supabase";
+import type { CommunityReportRow, ReportUpdateRow } from "@/lib/supabase";
 
 type AdminAction = "list_updates" | "create_update" | "update_update" | "delete_update";
 
@@ -17,6 +17,12 @@ type AdminUpdateRequest = {
 };
 
 type SupabaseAdminClient = NonNullable<ReturnType<typeof getSupabaseAdminClient>>;
+type AdminReportResponse = Pick<
+  CommunityReportRow,
+  "status" | "service_area" | "contact_preference" | "reporter_name" | "reporter_contact"
+>;
+
+const adminReportSelect = "status, service_area, contact_preference, reporter_name, reporter_contact";
 
 function mapUpdate(row: ReportUpdateRow) {
   return {
@@ -44,6 +50,16 @@ async function fetchReportUpdates(supabase: SupabaseAdminClient, reportId: strin
   return (data ?? []).map(mapUpdate);
 }
 
+async function fetchAdminReport(supabase: SupabaseAdminClient, reportId: string): Promise<AdminReportResponse> {
+  const { data, error } = await supabase.from("reports").select(adminReportSelect).eq("id", reportId).single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
 async function syncReportFromReviewHistory(supabase: SupabaseAdminClient, reportId: string, updates: ReturnType<typeof mapUpdate>[]) {
   const latestUpdate = updates[0];
   const reportUpdate: { status: ReportStatus; service_area?: string } = {
@@ -58,7 +74,7 @@ async function syncReportFromReviewHistory(supabase: SupabaseAdminClient, report
     .from("reports")
     .update(reportUpdate)
     .eq("id", reportId)
-    .select("*")
+    .select(adminReportSelect)
     .single();
 
   if (error) {
@@ -96,8 +112,9 @@ export async function POST(request: Request) {
   try {
     if (action === "list_updates") {
       const updates = await fetchReportUpdates(supabase, body.reportId);
+      const report = await fetchAdminReport(supabase, body.reportId);
 
-      return NextResponse.json({ updates });
+      return NextResponse.json({ report, updates });
     }
 
     if (action === "delete_update") {
@@ -166,7 +183,7 @@ export async function POST(request: Request) {
       .from("reports")
       .update(reportUpdate)
       .eq("id", body.reportId)
-      .select("*")
+      .select(adminReportSelect)
       .single();
 
     if (reportError) {
