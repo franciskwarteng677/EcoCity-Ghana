@@ -20,6 +20,17 @@ export type ReportCategory =
   | "Public Infrastructure"
   | "Community Safety";
 
+export type ReportEvidence = {
+  id: string;
+  reportId: string;
+  fileName: string;
+  filePath: string;
+  publicUrl: string | null;
+  fileSize: number | null;
+  mimeType: string | null;
+  createdAt: string | null;
+};
+
 export type CommunityReport = {
   id: string;
   category: ReportCategory;
@@ -38,6 +49,7 @@ export type CommunityReport = {
   evidencePublicUrl?: string | null;
   evidenceMimeType?: string | null;
   evidenceSizeBytes?: number | null;
+  evidence?: ReportEvidence[];
   contactPreference?: string | null;
   reporterName?: string | null;
   reporterContact?: string | null;

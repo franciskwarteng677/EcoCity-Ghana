@@ -87,6 +87,20 @@ alter table public.reports add constraint reports_status_check check (
   )
 );
 
+create table if not exists public.report_evidence (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references public.reports(id) on delete cascade,
+  file_name text not null,
+  file_path text not null,
+  public_url text,
+  file_size integer,
+  mime_type text,
+  created_at timestamptz default now()
+);
+
+create index if not exists report_evidence_report_id_idx on public.report_evidence (report_id);
+create index if not exists report_evidence_created_at_idx on public.report_evidence (created_at);
+
 create table if not exists public.report_updates (
   id uuid primary key default gen_random_uuid(),
   report_id uuid references public.reports(id) on delete cascade,
@@ -107,10 +121,13 @@ create index if not exists report_updates_created_at_idx on public.report_update
 create index if not exists report_updates_public_idx on public.report_updates (is_public);
 
 alter table public.reports enable row level security;
+alter table public.report_evidence enable row level security;
 alter table public.report_updates enable row level security;
 
 drop policy if exists "Reports are publicly readable" on public.reports;
 drop policy if exists "Anyone can submit reports" on public.reports;
+drop policy if exists "Report evidence records are publicly readable" on public.report_evidence;
+drop policy if exists "Anyone can add report evidence records" on public.report_evidence;
 drop policy if exists "Public report updates are readable" on public.report_updates;
 
 create policy "Reports are publicly readable"
@@ -139,6 +156,18 @@ with check (
   and urgency in ('Low', 'Medium', 'High', 'Emergency')
   and status = 'needs_review'
 );
+
+create policy "Report evidence records are publicly readable"
+on public.report_evidence
+for select
+to anon, authenticated
+using (true);
+
+create policy "Anyone can add report evidence records"
+on public.report_evidence
+for insert
+to anon, authenticated
+with check (true);
 
 create policy "Public report updates are readable"
 on public.report_updates
@@ -181,4 +210,5 @@ with check (
 
 grant usage on schema public to anon, authenticated;
 grant select, insert on public.reports to anon, authenticated;
+grant select, insert on public.report_evidence to anon, authenticated;
 grant select on public.report_updates to anon, authenticated;

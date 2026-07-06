@@ -6,7 +6,7 @@ The app uses Next.js App Router, TypeScript, Tailwind CSS, MapLibre/MapTiler, an
 
 ## Report Submission
 
-Residents submit reports at `/report` with category, community, location detail, description, urgency, danger signal, optional evidence image, optional contact preference, and optional map coordinates. New reports are saved with the `needs_review` workflow status.
+Residents submit reports at `/report` with category, community, location detail, description, urgency, danger signal, optional evidence images, optional contact preference, and optional map coordinates. New reports are saved with the `needs_review` workflow status.
 
 Reports can include browser location, a dropped map pin, typed-location search, manual coordinates, or only a descriptive location. Reports without coordinates are still saved and reviewed. Evidence images are optional and should only be added when it is safe to collect them.
 
@@ -15,6 +15,7 @@ Reports can include browser location, a dropped map pin, typed-location search, 
 Run `supabase-schema.sql` in the Supabase SQL editor before using the app with a live database. The schema creates:
 
 - `reports` for submitted community reports.
+- `report_evidence` for multiple uploaded evidence image records linked to reports.
 - `report_updates` for public civic response timeline entries.
 - `report-evidence` Supabase Storage bucket setup for uploaded evidence images.
 - RLS policies that allow public report submission and public reads.
@@ -30,7 +31,7 @@ Evidence images use the Supabase Storage bucket:
 report-evidence
 ```
 
-For the MVP, the bucket is public so evidence images can be displayed on public report pages. That means uploaded evidence is visible to anyone who can view the report. Citizens should not upload private, unsafe, or sensitive images.
+For the MVP, the bucket is public so evidence images can be displayed on public report pages. That means uploaded evidence is visible to anyone who can view the report. Evidence is optional and should only be collected when it is safe. Citizens should not upload private, unsafe, or sensitive images.
 
 Supported upload types:
 
@@ -38,7 +39,7 @@ Supported upload types:
 - PNG
 - WebP
 
-The app limits evidence image uploads to 20MB. The SQL schema also configures the bucket with the same file size limit and MIME type list where Supabase Storage supports those bucket settings.
+Each report can attach up to 5 evidence images. The app limits each evidence image upload to 20MB. The SQL schema also configures the bucket with the same file size limit and MIME type list where Supabase Storage supports those bucket settings.
 
 Setup steps:
 
@@ -46,6 +47,7 @@ Setup steps:
 - Confirm the `report-evidence` bucket exists in Supabase Storage.
 - Keep the bucket public for this MVP, or configure an equivalent public read policy.
 - Confirm anonymous users can upload to `report-evidence/reports/...` through the storage policy.
+- Confirm anonymous users can insert linked rows into `public.report_evidence` through the RLS policy.
 
 ## Public Reports
 
@@ -55,7 +57,7 @@ Setup steps:
 - Approximate location only
 - Needs map location
 
-Each report links to `/reports/[id]`, which shows the full report details, evidence image if attached, and public update timeline.
+Each report links to `/reports/[id]`, which shows the full report details, all attached evidence images if present, and public update timeline.
 
 ## Map Behavior
 
@@ -63,7 +65,7 @@ Each report links to `/reports/[id]`, which shows the full report details, evide
 
 ## Dashboard Analytics
 
-`/dashboard` summarizes total reports, workflow status counts, danger signals, high/emergency reports, responsible service areas, and reports needing map location. Empty states explain when no reports have been assigned, resolved, or submitted yet.
+`/dashboard` summarizes total reports, workflow status counts, danger signals, evidence image coverage, high/emergency reports, responsible service areas, and reports needing map location. Empty states explain when no reports have been assigned, resolved, or submitted yet.
 
 ## Admin Review Workflow
 

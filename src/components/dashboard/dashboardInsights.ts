@@ -6,6 +6,7 @@ import {
   type ReportStatus,
   type ReportUrgency
 } from "@/data/communityReports";
+import { getReportEvidenceImageCount } from "@/lib/evidence";
 
 export type CountItem<T extends string = string> = {
   label: T;
@@ -36,6 +37,8 @@ export type DashboardInsights = {
   communitiesRepresented: number;
   highPriorityServiceAreas: number;
   reportsNeedingMapLocation: number;
+  reportsWithEvidence: number;
+  totalEvidenceImages: number;
   statusOverview: CountItem<ReportStatus>[];
   urgencyBreakdown: CountItem<ReportUrgency>[];
   categoryBreakdown: CountItem[];
@@ -122,6 +125,7 @@ function getServiceAreaInsights(reports: CommunityReport[]) {
 export function getDashboardInsights(reports = communityReports): DashboardInsights {
   const floodDrainageReports = reports.filter((report) => floodDrainageCategories.has(report.category));
   const serviceAreas = getServiceAreaInsights(reports);
+  const evidenceImageCounts = reports.map(getReportEvidenceImageCount);
 
   return {
     totalReports: reports.length,
@@ -135,6 +139,8 @@ export function getDashboardInsights(reports = communityReports): DashboardInsig
     communitiesRepresented: new Set(reports.map((report) => report.community)).size,
     highPriorityServiceAreas: serviceAreas.filter((area) => area.urgentCount > 0 || area.dangerCount > 0).length,
     reportsNeedingMapLocation: reports.filter((report) => typeof report.latitude !== "number" || typeof report.longitude !== "number").length,
+    reportsWithEvidence: evidenceImageCounts.filter((count) => count > 0).length,
+    totalEvidenceImages: evidenceImageCounts.reduce((total, count) => total + count, 0),
     statusOverview: countBy(reports, (report) => report.status, reportStatuses),
     urgencyBreakdown: countBy(reports, (report) => report.urgency, reportUrgencies),
     categoryBreakdown: sortByCountThenLabel(countBy(reports, (report) => report.category)),

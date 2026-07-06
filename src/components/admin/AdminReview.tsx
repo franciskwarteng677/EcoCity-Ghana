@@ -15,9 +15,10 @@ import {
   type ReportUrgency
 } from "@/data/communityReports";
 import { useCommunityReports } from "@/hooks/useCommunityReports";
+import { EvidenceGallery } from "@/components/reports/EvidenceGallery";
 import { StatusBadge } from "@/components/reports/StatusBadge";
 import { UrgencyBadge } from "@/components/reports/UrgencyBadge";
-import { formatEvidenceFileSize } from "@/lib/evidence";
+import { getEvidenceAttachmentLabel, getReportEvidenceImageCount } from "@/lib/evidence";
 
 type AdminFilters = {
   status: string;
@@ -459,6 +460,9 @@ export function AdminReview() {
                     <span className={report.isDangerous ? "rounded-md bg-red-50 px-2.5 py-1 text-red-700" : "rounded-md bg-slate-100 px-2.5 py-1 text-slate-700"}>
                       {report.isDangerous ? "Danger noted" : "No danger signal"}
                     </span>
+                    {getReportEvidenceImageCount(report) > 0 ? (
+                      <span className="rounded-md bg-canopy-100 px-2.5 py-1 text-canopy-800">{getEvidenceAttachmentLabel(report)}</span>
+                    ) : null}
                     <span className="rounded-md bg-slate-100 px-2.5 py-1 text-slate-700">{formatDate(report.dateReported)}</span>
                   </div>
                 </button>
@@ -487,21 +491,7 @@ export function AdminReview() {
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-civic-700">{selectedReport.id}</p>
                   <h3 className="mt-2 text-base font-bold text-ink">{selectedReport.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{selectedReport.description}</p>
-                  {selectedReport.evidencePublicUrl ? (
-                    <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
-                      <img src={selectedReport.evidencePublicUrl} alt={`Evidence image for ${selectedReport.title}`} className="max-h-72 w-full object-contain" />
-                      <div className="border-t border-slate-200 p-3">
-                        <p className="text-sm font-bold text-ink">{selectedReport.evidenceFileName || selectedReport.evidenceLabel || "Evidence image"}</p>
-                        {selectedReport.evidenceSizeBytes ? (
-                          <p className="mt-1 text-xs font-semibold text-slate-600">{formatEvidenceFileSize(selectedReport.evidenceSizeBytes)}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="mt-4 rounded-md bg-white p-3 text-sm font-semibold leading-6 text-slate-600">
-                      {selectedReport.evidenceLabel || "No evidence image was attached."}
-                    </p>
-                  )}
+                  <EvidenceGallery report={selectedReport} compact />
                 </div>
 
                 <label className="grid gap-2 text-sm font-bold text-ink">

@@ -1,12 +1,28 @@
 import {
   communityReports,
   type CommunityReport,
+  type ReportEvidence,
   type ReportUpdate,
   type ReportCategory,
   normalizeReportStatus
 } from "@/data/communityReports";
-import { getSupabaseClient, isSupabaseConfigured, type CommunityReportInsert, type CommunityReportRow, type ReportUpdateRow } from "./supabase";
-import { createEvidenceStoragePath, REPORT_EVIDENCE_BUCKET, validateEvidenceFile, type EvidenceMetadata } from "./evidence";
+import {
+  getSupabaseClient,
+  isSupabaseConfigured,
+  type CommunityReportInsert,
+  type CommunityReportRow,
+  type ReportEvidenceInsert,
+  type ReportEvidenceRow,
+  type ReportUpdateRow
+} from "./supabase";
+import {
+  createEvidenceStoragePath,
+  getEvidenceMimeType,
+  REPORT_EVIDENCE_BUCKET,
+  validateEvidenceFile,
+  validateEvidenceFiles,
+  type EvidenceMetadata
+} from "./evidence";
 
 export type ReportDataSource = "supabase" | "sample";
 
@@ -38,9 +54,12 @@ export type NewCommunityReport = {
 };
 
 export class EvidenceUploadError extends Error {
-  constructor(message: string) {
+  reportId?: string;
+
+  constructor(message: string, reportId?: string) {
     super(message);
     this.name = "EvidenceUploadError";
+    this.reportId = reportId;
   }
 }
 
@@ -94,7 +113,89 @@ function getEvidencePublicUrl(filePath: string | null, publicUrl: string | null)
   return supabase.storage.from(REPORT_EVIDENCE_BUCKET).getPublicUrl(filePath).data.publicUrl;
 }
 
-export function mapReportRowToCommunityReport(row: CommunityReportRow): CommunityReport {
+function mapEvidenceRowToReportEvidence(row: ReportEvidenceRow): ReportEvidence {
+  return {
+    id: row.id,
+    reportId: row.report_id,
+    fileName: row.file_name,
+    filePath: row.file_path,
+    publicUrl: getEvidencePublicUrl(row.file_path, row.public_url),
+    fileSize: row.file_size,
+    mimeType: row.mime_type,
+    createdAt: row.created_at
+  };
+}
+
+function getLegacyEvidence(row: CommunityReportRow): ReportEvidence | null {
+  const publicUrl = getEvidencePublicUrl(row.evidence_file_path, row.evidence_public_url);
+
+  if (!publicUrl && !row.evidence_file_path) {
+    return null;
+  }
+
+  return {
+    id: `${row.id}-legacy-evidence`,
+    reportId: row.id,
+    fileName: row.evidence_file_name ?? row.evidence_label ?? "Evidence image",
+    filePath: row.evidence_file_path ?? "",
+    publicUrl,
+    fileSize: row.evidence_size_bytes,
+    mimeType: row.evidence_mime_type,
+    createdAt: row.created_at
+  };
+}
+
+function groupEvidenceByReportId(rows: ReportEvidenceRow[]) {
+  return rows.reduce<Map<string, ReportEvidenceRow[]>>((groups, row) => {
+    const existingRows = groups.get(row.report_id) ?? [];
+    groups.set(row.report_id, [...existingRows, row]);
+
+    return groups;
+  }, new Map<string, ReportEvidenceRow[]>());
+}
+
+function isMissingReportEvidenceTable(error: { code?: string; message: string }) {
+  const message = error.message.toLowerCase();
+
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    (message.includes("report_evidence") && (message.includes("could not find") || message.includes("does not exist")))
+  );
+}
+
+async function fetchReportEvidenceRows(reportIds: string[]) {
+  if (reportIds.length === 0) {
+    return [];
+  }
+
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("report_evidence")
+    .select("*")
+    .in("report_id", reportIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    if (isMissingReportEvidenceTable(error)) {
+      return [];
+    }
+
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
+}
+
+export function mapReportRowToCommunityReport(row: CommunityReportRow, evidenceRows: ReportEvidenceRow[] = []): CommunityReport {
+  const evidence = evidenceRows.length > 0 ? evidenceRows.map(mapEvidenceRowToReportEvidence) : [];
+  const legacyEvidence = evidence.length === 0 ? getLegacyEvidence(row) : null;
+
   return {
     id: row.id,
     category: row.category,
@@ -113,6 +214,7 @@ export function mapReportRowToCommunityReport(row: CommunityReportRow): Communit
     evidencePublicUrl: getEvidencePublicUrl(row.evidence_file_path, row.evidence_public_url),
     evidenceMimeType: row.evidence_mime_type,
     evidenceSizeBytes: row.evidence_size_bytes,
+    evidence: legacyEvidence ? [legacyEvidence] : evidence,
     contactPreference: row.contact_preference,
     reporterName: row.reporter_name,
     reporterContact: row.reporter_contact,
@@ -180,9 +282,10 @@ async function uploadEvidenceFile(reportId: string, file: File): Promise<Evidenc
   }
 
   const filePath = createEvidenceStoragePath(reportId, file);
+  const mimeType = getEvidenceMimeType(file);
   const { error } = await supabase.storage.from(REPORT_EVIDENCE_BUCKET).upload(filePath, file, {
     cacheControl: "3600",
-    contentType: file.type,
+    contentType: mimeType,
     upsert: false
   });
 
@@ -196,9 +299,38 @@ async function uploadEvidenceFile(reportId: string, file: File): Promise<Evidenc
     fileName: file.name,
     filePath,
     publicUrl: data.publicUrl,
-    mimeType: file.type,
+    mimeType,
     sizeBytes: file.size
   };
+}
+
+async function saveReportEvidence(reportId: string, evidence: EvidenceMetadata[]) {
+  if (evidence.length === 0) {
+    return [];
+  }
+
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new EvidenceUploadError("Supabase environment variables are required before evidence can be saved.", reportId);
+  }
+
+  const rows: ReportEvidenceInsert[] = evidence.map((item) => ({
+    report_id: reportId,
+    file_name: item.fileName,
+    file_path: item.filePath,
+    public_url: item.publicUrl,
+    file_size: item.sizeBytes,
+    mime_type: item.mimeType
+  }));
+
+  const { data, error } = await supabase.from("report_evidence").insert(rows).select("*");
+
+  if (error) {
+    throw new EvidenceUploadError(error.message, reportId);
+  }
+
+  return data ?? [];
 }
 
 export function mapReportUpdateRowToReportUpdate(row: ReportUpdateRow): ReportUpdate {
@@ -236,8 +368,12 @@ export async function fetchCommunityReports(): Promise<ReportsResult> {
     throw new Error(error.message);
   }
 
+  const reportRows = data ?? [];
+  const evidenceRows = await fetchReportEvidenceRows(reportRows.map((report) => report.id));
+  const evidenceRowsByReportId = groupEvidenceByReportId(evidenceRows);
+
   return {
-    reports: (data ?? []).map(mapReportRowToCommunityReport),
+    reports: reportRows.map((report) => mapReportRowToCommunityReport(report, evidenceRowsByReportId.get(report.id) ?? [])),
     source: "supabase"
   };
 }
@@ -278,36 +414,44 @@ export async function fetchCommunityReportById(id: string): Promise<ReportWithUp
     throw new Error(updateError.message);
   }
 
+  const evidenceRows = await fetchReportEvidenceRows([id]);
+
   return {
-    report: mapReportRowToCommunityReport(reportData),
+    report: mapReportRowToCommunityReport(reportData, evidenceRows),
     updates: (updateData ?? []).map(mapReportUpdateRowToReportUpdate),
     source: "supabase"
   };
 }
 
-export async function submitCommunityReport(report: NewCommunityReport, evidenceFile?: File | null) {
+export async function submitCommunityReport(report: NewCommunityReport, evidenceFiles?: File[] | null) {
   const supabase = getSupabaseClient();
 
   if (!supabase) {
     throw new Error("Supabase environment variables are required before reports can be saved.");
   }
 
+  const selectedEvidenceFiles = evidenceFiles ?? [];
+  const evidenceValidationError = validateEvidenceFiles(selectedEvidenceFiles);
+
+  if (evidenceValidationError) {
+    throw new EvidenceUploadError(evidenceValidationError);
+  }
+
   const reportId = report.id ?? createUuid();
-  const evidenceMetadata = evidenceFile ? await uploadEvidenceFile(reportId, evidenceFile) : null;
-  const reportWithEvidence: NewCommunityReport = {
+  const reportToSave: NewCommunityReport = {
     ...report,
     id: reportId,
-    evidenceLabel: evidenceMetadata?.fileName ?? report.evidenceLabel ?? null,
-    evidenceFileName: evidenceMetadata?.fileName ?? report.evidenceFileName ?? null,
-    evidenceFilePath: evidenceMetadata?.filePath ?? report.evidenceFilePath ?? null,
-    evidencePublicUrl: evidenceMetadata?.publicUrl ?? report.evidencePublicUrl ?? null,
-    evidenceMimeType: evidenceMetadata?.mimeType ?? report.evidenceMimeType ?? null,
-    evidenceSizeBytes: evidenceMetadata?.sizeBytes ?? report.evidenceSizeBytes ?? null
+    evidenceLabel: null,
+    evidenceFileName: null,
+    evidenceFilePath: null,
+    evidencePublicUrl: null,
+    evidenceMimeType: null,
+    evidenceSizeBytes: null
   };
 
   const { data, error } = await supabase
     .from("reports")
-    .insert(mapNewReportToInsert(reportWithEvidence))
+    .insert(mapNewReportToInsert(reportToSave))
     .select("*")
     .single();
 
@@ -315,5 +459,21 @@ export async function submitCommunityReport(report: NewCommunityReport, evidence
     throw new Error(error.message);
   }
 
-  return mapReportRowToCommunityReport(data);
+  try {
+    const evidenceMetadata: EvidenceMetadata[] = [];
+
+    for (const file of selectedEvidenceFiles) {
+      evidenceMetadata.push(await uploadEvidenceFile(reportId, file));
+    }
+
+    const evidenceRows = await saveReportEvidence(reportId, evidenceMetadata);
+
+    return mapReportRowToCommunityReport(data, evidenceRows);
+  } catch (error) {
+    if (error instanceof EvidenceUploadError) {
+      throw new EvidenceUploadError(error.message, reportId);
+    }
+
+    throw new EvidenceUploadError(error instanceof Error ? error.message : "Evidence images could not be attached.", reportId);
+  }
 }

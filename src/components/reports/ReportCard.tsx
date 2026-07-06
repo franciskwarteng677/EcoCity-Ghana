@@ -1,6 +1,7 @@
 import { AlertTriangle, Camera, MapPin } from "lucide-react";
 import Link from "next/link";
 import type { CommunityReport } from "@/data/communityReports";
+import { getEvidenceAttachmentLabel, getReportEvidenceImageCount } from "@/lib/evidence";
 import { StatusBadge } from "./StatusBadge";
 import { UrgencyBadge } from "./UrgencyBadge";
 
@@ -13,7 +14,7 @@ type ReportCardProps = {
 export function ReportCard({ report, isSelected, onSelect }: ReportCardProps) {
   const hasCoordinates = typeof report.latitude === "number" && typeof report.longitude === "number";
   const mapLabel = hasCoordinates ? "Mapped" : report.locationDetail ? "Approximate location only" : "Needs map location";
-  const hasEvidenceImage = Boolean(report.evidencePublicUrl || report.evidenceFilePath);
+  const evidenceImageCount = getReportEvidenceImageCount(report);
 
   return (
     <article
@@ -49,10 +50,10 @@ export function ReportCard({ report, isSelected, onSelect }: ReportCardProps) {
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{report.responsibleServiceArea}</span>
             <span className="rounded-md bg-civic-50 px-2.5 py-1 text-xs font-bold text-civic-700">{mapLabel}</span>
-            {hasEvidenceImage ? (
+            {evidenceImageCount > 0 ? (
               <span className="inline-flex items-center gap-1 rounded-md bg-canopy-100 px-2.5 py-1 text-xs font-bold text-canopy-800">
                 <Camera className="h-3.5 w-3.5" aria-hidden="true" />
-                Evidence attached
+                {getEvidenceAttachmentLabel(report)}
               </span>
             ) : null}
             {report.isDangerous ? (

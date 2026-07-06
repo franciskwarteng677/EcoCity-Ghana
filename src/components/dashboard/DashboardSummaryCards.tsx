@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleCheck, ClipboardList, Flame, MapPinned, ShieldAlert, UserCheck, UsersRound, Wrench } from "lucide-react";
+import { AlertTriangle, Camera, CircleCheck, ClipboardList, Flame, Images, MapPinned, ShieldAlert, UserCheck, UsersRound, Wrench } from "lucide-react";
 import type { DashboardInsights } from "./dashboardInsights";
 import { InsightCard } from "./InsightCard";
 
@@ -47,6 +47,18 @@ export function DashboardSummaryCards({ insights }: { insights: DashboardInsight
       detail: "Reports where direct safety risk is noted by the community.",
       icon: AlertTriangle,
       tone: "red" as const
+    },
+    {
+      label: "Reports with evidence",
+      value: insights.reportsWithEvidence,
+      detail: "Reports with at least one attached evidence image.",
+      icon: Camera
+    },
+    {
+      label: "Evidence images",
+      value: insights.totalEvidenceImages,
+      detail: "Total evidence images attached across submitted reports.",
+      icon: Images
     },
     {
       label: "High/emergency reports",

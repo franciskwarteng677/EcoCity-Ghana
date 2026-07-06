@@ -2,10 +2,10 @@
 
 import type { ChangeEvent, FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Camera, Info, LocateFixed, Loader2, Search, Send, ShieldAlert } from "lucide-react";
+import { AlertCircle, Camera, Info, LocateFixed, Loader2, Search, Send, ShieldAlert, X } from "lucide-react";
 import { isReportCategory, isReportUrgency } from "@/data/communityReports";
 import { EvidenceUploadError, submitCommunityReport, type NewCommunityReport } from "@/lib/reports";
-import { formatEvidenceFileSize, validateEvidenceFile } from "@/lib/evidence";
+import { formatEvidenceFileSize, MAX_EVIDENCE_IMAGES, validateEvidenceFiles } from "@/lib/evidence";
 import { CategorySelector } from "./CategorySelector";
 import { FormField } from "./FormField";
 import { LocationPicker } from "./LocationPicker";
@@ -30,6 +30,12 @@ export type ReportFormData = {
 };
 
 type ReportFormErrors = Partial<Record<keyof ReportFormData, string>>;
+
+type SelectedEvidenceFile = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
 
 type MapTilerGeocodeResponse = {
   features?: Array<{
@@ -74,6 +80,27 @@ function parseOptionalCoordinate(value: string) {
 
 function formatCoordinate(value: number) {
   return value.toFixed(6);
+}
+
+function createSelectedEvidenceId(file: File, index: number) {
+  const token =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return `${file.name}-${file.lastModified}-${index}-${token}`;
+}
+
+function getEvidenceSelectionLabel(files: SelectedEvidenceFile[]) {
+  if (files.length === 0) {
+    return "";
+  }
+
+  if (files.length === 1) {
+    return files[0].file.name;
+  }
+
+  return `${files.length} evidence images selected`;
 }
 
 function isValidLatitude(value: number | null) {
@@ -188,7 +215,7 @@ function toNewCommunityReport(data: ReportFormData): NewCommunityReport | null {
     description: data.description,
     urgency: data.urgency,
     dangerNoted: data.isDangerous,
-    evidenceLabel: data.evidenceName || null,
+    evidenceLabel: null,
     contactPreference: data.contactPreference,
     reporterName: shouldStoreContact ? data.reporterName || null : null,
     reporterContact: shouldStoreContact ? data.contactDetail || null : null,
@@ -201,9 +228,9 @@ export function ReportForm() {
   const [formData, setFormData] = useState<ReportFormData>(initialFormData);
   const [errors, setErrors] = useState<ReportFormErrors>({});
   const [preparedReport, setPreparedReport] = useState<ReportFormData | null>(null);
-  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
-  const [evidencePreviewUrl, setEvidencePreviewUrl] = useState<string | null>(null);
+  const [evidenceFiles, setEvidenceFiles] = useState<SelectedEvidenceFile[]>([]);
   const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
+  const [submittedEvidenceCount, setSubmittedEvidenceCount] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -212,29 +239,22 @@ export function ReportForm() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [submittedReportMapped, setSubmittedReportMapped] = useState<boolean | undefined>(undefined);
   const evidenceInputRef = useRef<HTMLInputElement | null>(null);
+  const evidenceFilesRef = useRef<SelectedEvidenceFile[]>([]);
+
+  useEffect(() => {
+    evidenceFilesRef.current = evidenceFiles;
+  }, [evidenceFiles]);
 
   useEffect(() => {
     return () => {
-      if (evidencePreviewUrl) {
-        URL.revokeObjectURL(evidencePreviewUrl);
-      }
+      evidenceFilesRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
     };
-  }, [evidencePreviewUrl]);
+  }, []);
 
-  function setNextEvidencePreviewUrl(nextUrl: string | null) {
-    setEvidencePreviewUrl((currentUrl) => {
-      if (currentUrl) {
-        URL.revokeObjectURL(currentUrl);
-      }
-
-      return nextUrl;
-    });
-  }
-
-  function clearEvidenceFile() {
-    setEvidenceFile(null);
-    setNextEvidencePreviewUrl(null);
-    setFormData((current) => ({ ...current, evidenceName: "" }));
+  function replaceEvidenceFiles(nextFiles: SelectedEvidenceFile[]) {
+    evidenceFilesRef.current = nextFiles;
+    setEvidenceFiles(nextFiles);
+    setFormData((current) => ({ ...current, evidenceName: getEvidenceSelectionLabel(nextFiles) }));
     setErrors((current) => ({ ...current, evidenceName: undefined }));
 
     if (evidenceInputRef.current) {
@@ -242,11 +262,27 @@ export function ReportForm() {
     }
   }
 
+  function clearEvidenceFiles() {
+    evidenceFilesRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    replaceEvidenceFiles([]);
+  }
+
+  function removeEvidenceFile(fileId: string) {
+    const fileToRemove = evidenceFilesRef.current.find((item) => item.id === fileId);
+
+    if (fileToRemove) {
+      URL.revokeObjectURL(fileToRemove.previewUrl);
+    }
+
+    replaceEvidenceFiles(evidenceFilesRef.current.filter((item) => item.id !== fileId));
+  }
+
   function updateField<Field extends keyof ReportFormData>(field: Field, value: ReportFormData[Field]) {
     setFormData((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
     setPreparedReport(null);
     setSubmittedReportId(null);
+    setSubmittedEvidenceCount(0);
     setSubmittedReportMapped(undefined);
     setSubmitError(null);
     setLocationMessage(null);
@@ -254,32 +290,36 @@ export function ReportForm() {
   }
 
   function handleEvidenceFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const selectedFile = event.target.files?.[0] ?? null;
+    const selectedFiles = Array.from(event.target.files ?? []);
     setPreparedReport(null);
     setSubmittedReportId(null);
+    setSubmittedEvidenceCount(0);
     setSubmittedReportMapped(undefined);
     setSubmitError(null);
 
-    if (!selectedFile) {
-      clearEvidenceFile();
+    if (selectedFiles.length === 0) {
+      event.target.value = "";
       return;
     }
 
-    const validationError = validateEvidenceFile(selectedFile);
+    const validationError = validateEvidenceFiles(selectedFiles, evidenceFilesRef.current.length);
 
     if (validationError) {
-      setEvidenceFile(null);
-      setNextEvidencePreviewUrl(null);
-      setFormData((current) => ({ ...current, evidenceName: "" }));
       setErrors((current) => ({ ...current, evidenceName: validationError }));
       event.target.value = "";
       return;
     }
 
-    setEvidenceFile(selectedFile);
-    setNextEvidencePreviewUrl(URL.createObjectURL(selectedFile));
-    setFormData((current) => ({ ...current, evidenceName: selectedFile.name }));
-    setErrors((current) => ({ ...current, evidenceName: undefined }));
+    const nextEvidenceFiles = [
+      ...evidenceFilesRef.current,
+      ...selectedFiles.map((file, index) => ({
+        id: createSelectedEvidenceId(file, index),
+        file,
+        previewUrl: URL.createObjectURL(file)
+      }))
+    ];
+
+    replaceEvidenceFiles(nextEvidenceFiles);
   }
 
   const setReportCoordinates = useCallback((coordinates: { latitude: number; longitude: number }, message: string) => {
@@ -291,6 +331,7 @@ export function ReportForm() {
     setErrors((current) => ({ ...current, latitude: undefined, longitude: undefined }));
     setPreparedReport(null);
     setSubmittedReportId(null);
+    setSubmittedEvidenceCount(0);
     setSubmittedReportMapped(undefined);
     setSubmitError(null);
     setLocationMessage(message);
@@ -400,7 +441,8 @@ export function ReportForm() {
       return;
     }
 
-    const evidenceError = evidenceFile ? validateEvidenceFile(evidenceFile) : null;
+    const selectedEvidenceFiles = evidenceFilesRef.current.map((item) => item.file);
+    const evidenceError = validateEvidenceFiles(selectedEvidenceFiles);
     const nextErrors = {
       ...validateForm(formData),
       ...(evidenceError ? { evidenceName: evidenceError } : {})
@@ -422,23 +464,33 @@ export function ReportForm() {
     }
 
     setIsSubmitting(true);
+    const reportIsMapped = parseOptionalCoordinate(sanitizedData.latitude) !== null && parseOptionalCoordinate(sanitizedData.longitude) !== null;
 
     try {
-      const savedReport = await submitCommunityReport(newReport, evidenceFile);
+      const savedReport = await submitCommunityReport(newReport, selectedEvidenceFiles);
       const isMapped = typeof savedReport.latitude === "number" && typeof savedReport.longitude === "number";
       setPreparedReport(sanitizedData);
       setSubmittedReportId(savedReport.id);
+      setSubmittedEvidenceCount(selectedEvidenceFiles.length);
       setSubmittedReportMapped(isMapped);
       setFormData(initialFormData);
-      setEvidenceFile(null);
-      setNextEvidencePreviewUrl(null);
-
-      if (evidenceInputRef.current) {
-        evidenceInputRef.current.value = "";
-      }
+      clearEvidenceFiles();
     } catch (error) {
       if (error instanceof EvidenceUploadError) {
-        setSubmitError("The report could not be saved because the evidence image failed to upload. Please try again or submit without evidence.");
+        if (error.reportId) {
+          setPreparedReport(sanitizedData);
+          setSubmittedReportId(error.reportId);
+          setSubmittedEvidenceCount(0);
+          setSubmittedReportMapped(reportIsMapped);
+          setFormData(initialFormData);
+          clearEvidenceFiles();
+          setSubmitError(
+            `Your report was saved with tracking ID ${error.reportId}, but the evidence images could not be attached. Please try again later or contact the review team with the tracking ID.`
+          );
+        } else {
+          setSubmitError(`The evidence images could not be attached. ${error.message}`);
+        }
+
         return;
       }
 
@@ -452,10 +504,11 @@ export function ReportForm() {
   function handleSubmitAnother() {
     setPreparedReport(null);
     setSubmittedReportId(null);
+    setSubmittedEvidenceCount(0);
     setSubmittedReportMapped(undefined);
     setSubmitError(null);
     setErrors({});
-    clearEvidenceFile();
+    clearEvidenceFiles();
   }
 
   const previewReport = preparedReport ?? (hasDraftContent(formData) ? formData : null);
@@ -469,7 +522,14 @@ export function ReportForm() {
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-start">
       <form className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm sm:p-6" onSubmit={handleSubmit} noValidate>
         <div className="grid gap-6">
-          {submittedReportId ? <SubmissionNotice reportId={submittedReportId} isMapped={submittedReportMapped} onSubmitAnother={handleSubmitAnother} /> : null}
+          {submittedReportId ? (
+            <SubmissionNotice
+              reportId={submittedReportId}
+              isMapped={submittedReportMapped}
+              evidenceImageCount={submittedEvidenceCount}
+              onSubmitAnother={handleSubmitAnother}
+            />
+          ) : null}
 
           {submitError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800" role="alert">
@@ -624,16 +684,21 @@ export function ReportForm() {
             </span>
           </label>
 
-          <FormField id="evidence" label="Evidence or photo" hint="Optional: add a clear photo only if it is safe to collect evidence. JPG, PNG, and WebP images up to 20MB are supported. Avoid private details.">
+          <FormField
+            id="evidence"
+            label="Evidence photos"
+            hint={`Optional: add up to ${MAX_EVIDENCE_IMAGES} clear photos only if it is safe to collect evidence. JPG, JPEG, PNG, and WebP images up to 20MB each are supported. Avoid private details.`}
+          >
             <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-civic-500 bg-civic-50 px-4 py-7 text-center transition hover:bg-civic-100">
               <Camera className="h-8 w-8 text-civic-700" aria-hidden="true" />
-              <span className="mt-3 text-sm font-bold text-ink">{formData.evidenceName || "Choose a photo or evidence file"}</span>
+              <span className="mt-3 text-sm font-bold text-ink">{formData.evidenceName || `Choose up to ${MAX_EVIDENCE_IMAGES} evidence images`}</span>
               <span className="mt-1 text-xs text-slate-600">Images are uploaded with the report and may be publicly visible.</span>
               <input
                 ref={evidenceInputRef}
                 id="evidence"
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                multiple
                 className="sr-only"
                 onChange={handleEvidenceFileChange}
                 aria-describedby={errors.evidenceName ? "evidence-error evidence-hint" : "evidence-hint"}
@@ -644,23 +709,30 @@ export function ReportForm() {
                 {errors.evidenceName}
               </p>
             ) : null}
-            {evidenceFile && evidencePreviewUrl ? (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-                <div className="overflow-hidden rounded-md bg-slate-100">
-                  <img src={evidencePreviewUrl} alt="Selected evidence preview" className="max-h-72 w-full object-contain" />
-                </div>
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-semibold text-slate-700">
-                    {evidenceFile.name} · {formatEvidenceFileSize(evidenceFile.size)}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={clearEvidenceFile}
-                    className="inline-flex h-9 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-civic-300 hover:text-civic-700"
-                  >
-                    Remove image
-                  </button>
-                </div>
+            {evidenceFiles.length > 0 ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {evidenceFiles.map((item, index) => (
+                  <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="overflow-hidden rounded-md bg-slate-100">
+                      <img src={item.previewUrl} alt={`Selected evidence preview ${index + 1}`} className="aspect-[4/3] w-full object-contain" />
+                    </div>
+                    <div className="mt-3 flex items-start justify-between gap-3">
+                      <p className="min-w-0 text-sm font-semibold leading-6 text-slate-700">
+                        <span className="block break-all text-ink">{item.file.name}</span>
+                        <span className="text-slate-600">{formatEvidenceFileSize(item.file.size)}</span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => removeEvidenceFile(item.id)}
+                        title="Remove image"
+                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-civic-300 hover:text-civic-700"
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                        <span className="sr-only">Remove image</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : null}
           </FormField>

@@ -60,7 +60,7 @@ export function ReportPreviewCard({ report }: ReportPreviewCardProps) {
               <p>
                 <span className="font-bold text-ink">Evidence</span>
                 <br />
-                {report.evidenceName || "No file selected"}
+                {report.evidenceName || "No images selected"}
               </p>
             </div>
             <div className="flex gap-3">

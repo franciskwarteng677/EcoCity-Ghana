@@ -36,6 +36,28 @@ export type ReportUpdateRow = {
   created_at: string;
 };
 
+export type ReportEvidenceRow = {
+  id: string;
+  report_id: string;
+  file_name: string;
+  file_path: string;
+  public_url: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  created_at: string | null;
+};
+
+export type ReportEvidenceInsert = {
+  id?: string;
+  report_id: string;
+  file_name: string;
+  file_path: string;
+  public_url?: string | null;
+  file_size?: number | null;
+  mime_type?: string | null;
+  created_at?: string | null;
+};
+
 export type ReportUpdateInsert = {
   report_id: string;
   status: ReportStatus;
@@ -81,6 +103,12 @@ export type Database = {
         Row: ReportUpdateRow;
         Insert: ReportUpdateInsert;
         Update: Partial<ReportUpdateInsert>;
+        Relationships: [];
+      };
+      report_evidence: {
+        Row: ReportEvidenceRow;
+        Insert: ReportEvidenceInsert;
+        Update: Partial<ReportEvidenceInsert>;
         Relationships: [];
       };
     };

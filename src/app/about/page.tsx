@@ -5,7 +5,7 @@ export default function AboutPage() {
     "Citizen issue reporting for environmental, infrastructure, and safety concerns",
     "Supabase-backed report persistence for submitted community reports",
     "Community report register with search, category, status, and urgency filters",
-    "Optional image evidence uploads for reports when it is safe to collect a photo",
+    "Optional multiple image evidence uploads for reports when it is safe to collect photos",
     "Dashboard analytics for report volume, urgency, hotspots, and service areas",
     "Map-based issue visibility when reports include location data",
     "Reports without map location are still saved and shown in reports and dashboard views"

@@ -1,5 +1,6 @@
 import { CalendarDays, Camera, MapPin, ShieldAlert, Wrench } from "lucide-react";
 import type { CommunityReport } from "@/data/communityReports";
+import { getEvidenceAttachmentLabel } from "@/lib/evidence";
 import { StatusBadge } from "./StatusBadge";
 import { UrgencyBadge } from "./UrgencyBadge";
 
@@ -16,9 +17,6 @@ export function ReportDetailPanel({ report }: ReportDetailPanelProps) {
       </aside>
     );
   }
-
-  const hasEvidenceImage = Boolean(report.evidencePublicUrl || report.evidenceFilePath);
-
   return (
     <aside className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-28">
       <p className="text-xs font-bold uppercase tracking-[0.16em] text-civic-700">{report.id}</p>
@@ -74,7 +72,7 @@ export function ReportDetailPanel({ report }: ReportDetailPanelProps) {
             <p>
               <span className="font-bold text-ink">Evidence</span>
               <br />
-              {hasEvidenceImage ? "Evidence image attached" : report.evidenceLabel ?? "No evidence image was attached."}
+              {getEvidenceAttachmentLabel(report)}
             </p>
           </div>
         </div>

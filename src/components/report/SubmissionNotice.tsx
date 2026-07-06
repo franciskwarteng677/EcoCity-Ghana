@@ -4,12 +4,21 @@ import Link from "next/link";
 export function SubmissionNotice({
   reportId,
   isMapped,
+  evidenceImageCount,
   onSubmitAnother
 }: {
   reportId?: string;
   isMapped?: boolean;
+  evidenceImageCount?: number;
   onSubmitAnother: () => void;
 }) {
+  const evidenceMessage =
+    evidenceImageCount === 1
+      ? "1 evidence image was attached."
+      : evidenceImageCount && evidenceImageCount > 1
+        ? `${evidenceImageCount} evidence images were attached.`
+        : "No evidence images were attached.";
+
   return (
     <div className="rounded-lg border border-civic-100 bg-civic-50 p-5">
       <div className="flex items-start gap-3">
@@ -23,6 +32,8 @@ export function SubmissionNotice({
             {isMapped
               ? "It includes a map location and can appear as a marker."
               : "It was saved without map coordinates and will appear in the reports register while listed separately on the map page."}
+            {" "}
+            {evidenceMessage}
           </p>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {reportId ? (
