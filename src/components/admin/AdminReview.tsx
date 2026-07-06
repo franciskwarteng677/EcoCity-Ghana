@@ -142,13 +142,11 @@ function ContactDetailRow({ label, value, emptyText }: { label: string; value: s
 function ReporterContactSection({
   details,
   isLoading,
-  error,
-  hasAdminCode
+  error
 }: {
   details: ReporterContactDetails | null;
   isLoading: boolean;
   error: string | null;
-  hasAdminCode: boolean;
 }) {
   return (
     <section className="mt-4 rounded-lg border border-civic-100 bg-civic-50 p-4" aria-labelledby="reporter-contact-heading">
@@ -162,11 +160,7 @@ function ReporterContactSection({
         </div>
       </div>
 
-      {!hasAdminCode ? (
-        <p className="mt-4 rounded-md bg-white p-3 text-sm font-semibold leading-6 text-slate-600">
-          Enter the admin review code to load private reporter contact details for this report.
-        </p>
-      ) : error ? (
+      {error ? (
         <p className="mt-4 rounded-md bg-red-50 p-3 text-sm font-semibold leading-6 text-red-700">{error}</p>
       ) : isLoading && !details ? (
         <p className="mt-4 rounded-md bg-white p-3 text-sm font-semibold leading-6 text-slate-600">Loading reporter contact details...</p>
@@ -193,7 +187,6 @@ export function AdminReview() {
   const [localReports, setLocalReports] = useState<CommunityReport[]>([]);
   const [filters, setFilters] = useState<AdminFilters>(initialFilters);
   const [selectedReportId, setSelectedReportId] = useState("");
-  const [adminCode, setAdminCode] = useState("");
   const [status, setStatus] = useState<ReportStatus>("needs_review");
   const [responsibleServiceArea, setResponsibleServiceArea] = useState("");
   const [note, setNote] = useState("");
@@ -219,16 +212,7 @@ export function AdminReview() {
   const activeReportId = selectedReport?.id ?? "";
 
   const loadReviewUpdates = useCallback(
-    async (reportId: string, code: string, showErrors = true) => {
-      if (!code.trim()) {
-        setReviewUpdates([]);
-        setHasLoadedUpdates(false);
-        setUpdatesError(null);
-        setReporterContactDetails(null);
-        setReporterContactError(null);
-        return;
-      }
-
+    async (reportId: string, showErrors = true) => {
       setIsLoadingUpdates(true);
       setUpdatesError(null);
       setReporterContactError(null);
@@ -236,7 +220,6 @@ export function AdminReview() {
       try {
         const result = await sendAdminRequest({
           action: "list_updates",
-          adminCode: code,
           reportId
         });
 
@@ -283,21 +266,12 @@ export function AdminReview() {
       return;
     }
 
-    if (!adminCode.trim()) {
-      setReviewUpdates([]);
-      setHasLoadedUpdates(false);
-      setUpdatesError(null);
-      setReporterContactDetails(null);
-      setReporterContactError(null);
-      return;
-    }
-
     const timer = window.setTimeout(() => {
-      void loadReviewUpdates(activeReportId, adminCode, false);
+      void loadReviewUpdates(activeReportId, false);
     }, 500);
 
     return () => window.clearTimeout(timer);
-  }, [activeReportId, adminCode, loadReviewUpdates]);
+  }, [activeReportId, loadReviewUpdates]);
 
   function updateSelectedReport(nextStatus: ReportStatus, nextServiceArea?: string | null) {
     if (!selectedReport) {
@@ -372,7 +346,6 @@ export function AdminReview() {
     try {
       const result = await sendAdminRequest({
         action: editingUpdateId ? "update_update" : "create_update",
-        adminCode,
         reportId: selectedReport.id,
         updateId: editingUpdateId ?? undefined,
         status,
@@ -428,7 +401,6 @@ export function AdminReview() {
     try {
       const result = await sendAdminRequest({
         action: "delete_update",
-        adminCode,
         reportId: selectedReport.id,
         updateId: update.id
       });
@@ -605,14 +577,8 @@ export function AdminReview() {
                     details={reporterContactDetails}
                     isLoading={isLoadingUpdates}
                     error={reporterContactError}
-                    hasAdminCode={Boolean(adminCode.trim())}
                   />
                 </div>
-
-                <label className="grid gap-2 text-sm font-bold text-ink">
-                  Admin review code
-                  <input value={adminCode} onChange={(event) => setAdminCode(event.target.value)} className={inputClass} type="password" required />
-                </label>
 
                 <label className="grid gap-2 text-sm font-bold text-ink">
                   Status
@@ -687,8 +653,8 @@ export function AdminReview() {
               </div>
               <button
                 type="button"
-                onClick={() => selectedReport && void loadReviewUpdates(selectedReport.id, adminCode)}
-                disabled={!selectedReport || !adminCode.trim() || isLoadingUpdates}
+                onClick={() => selectedReport && void loadReviewUpdates(selectedReport.id)}
+                disabled={!selectedReport || isLoadingUpdates}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-civic-100 bg-white px-3 text-sm font-bold text-civic-700 shadow-sm transition hover:bg-civic-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isLoadingUpdates ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
@@ -699,10 +665,6 @@ export function AdminReview() {
             {!selectedReport ? (
               <p className="mt-5 rounded-md bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
                 Select a report to view its review history.
-              </p>
-            ) : !adminCode.trim() ? (
-              <p className="mt-5 rounded-md bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
-                Enter the admin review code above to load existing review updates for this report.
               </p>
             ) : updatesError ? (
               <div className="mt-5">

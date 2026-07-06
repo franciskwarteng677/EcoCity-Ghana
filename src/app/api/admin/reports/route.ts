@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isReportStatus, normalizeReportStatus, type ReportStatus } from "@/data/communityReports";
+import { hasValidAdminSession, isAdminReviewCodeConfigured, isValidAdminReviewCode } from "@/lib/adminAuth";
 import { getSupabaseAdminClient } from "@/lib/supabaseAdmin";
 import type { CommunityReportRow, ReportUpdateRow } from "@/lib/supabase";
 
@@ -85,16 +86,15 @@ async function syncReportFromReviewHistory(supabase: SupabaseAdminClient, report
 }
 
 export async function POST(request: Request) {
-  const configuredCode = process.env.ADMIN_REVIEW_CODE;
-
-  if (!configuredCode) {
+  if (!isAdminReviewCodeConfigured()) {
     return NextResponse.json({ error: "Admin review is not configured." }, { status: 500 });
   }
 
   const body = (await request.json()) as AdminUpdateRequest;
+  const hasAdminAccess = (await hasValidAdminSession()) || isValidAdminReviewCode(body.adminCode);
 
-  if (!body.adminCode || body.adminCode !== configuredCode) {
-    return NextResponse.json({ error: "Invalid admin review code." }, { status: 401 });
+  if (!hasAdminAccess) {
+    return NextResponse.json({ error: "Admin access is required. Unlock the admin console again." }, { status: 401 });
   }
 
   const supabase = getSupabaseAdminClient();

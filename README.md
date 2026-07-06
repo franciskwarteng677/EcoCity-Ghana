@@ -17,8 +17,9 @@ Run `supabase-schema.sql` in the Supabase SQL editor before using the app with a
 - `reports` for submitted community reports.
 - `report_evidence` for multiple uploaded evidence image records linked to reports.
 - `report_updates` for public civic response timeline entries.
+- `public_reports` view for public report reads without private reporter contact fields.
 - `report-evidence` Supabase Storage bucket setup for uploaded evidence images.
-- RLS policies that allow public report submission and public reads.
+- RLS policies that allow public report submission and public reads through the safe public view.
 - Public `report_updates` reads only where `is_public = true`.
 
 Public users are not granted report update permissions. Admin status changes are handled by a server-side API route.
@@ -69,7 +70,9 @@ Each report links to `/reports/[id]`, which shows the full report details, all a
 
 ## Admin Review Workflow
 
-`/admin` is an MVP review console. Reviewers can filter reports, select a report, inspect attached evidence, update its status, assign a responsible service area, and add a public update note. Saves go through `/api/admin/reports`, which checks `ADMIN_REVIEW_CODE` on the server and uses the Supabase service role key only server-side.
+`/admin` is an MVP review console protected by an admin access screen. Reviewers must enter `ADMIN_REVIEW_CODE` before the submitted report dashboard is loaded. The code is checked server-side through `/api/admin/auth`, then a temporary browser-session admin access state unlocks the console for the current session.
+
+After access is verified, reviewers can filter reports, select a report, inspect attached evidence, view private reporter contact details, update report status, assign a responsible service area, and add public or private review notes. Review actions go through `/api/admin/reports`, which remains protected server-side and uses the Supabase service role key only server-side.
 
 Workflow statuses:
 
@@ -97,6 +100,8 @@ ADMIN_REVIEW_CODE=your_admin_review_code_here
 Only `NEXT_PUBLIC_*` values are exposed to the browser. Do not use `NEXT_PUBLIC` for `ADMIN_REVIEW_CODE` or `SUPABASE_SERVICE_ROLE_KEY`.
 
 `.env.local` is ignored by Git and should not be committed.
+
+When deploying, add `ADMIN_REVIEW_CODE` and `SUPABASE_SERVICE_ROLE_KEY` to the production environment variables as server-only values. The admin review console will not unlock without `ADMIN_REVIEW_CODE`.
 
 ## Run Locally
 
