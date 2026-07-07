@@ -64,6 +64,7 @@ export function ReportsExplorer() {
   );
 
   const selectedReport = filteredReports.find((report) => report.id === selectedReportId) ?? filteredReports[0] ?? null;
+  const hasActiveFilters = Boolean(filters.search || filters.category || filters.status || filters.urgency);
 
   useEffect(() => {
     if (!selectedReport && filteredReports[0]) {
@@ -114,7 +115,12 @@ export function ReportsExplorer() {
               Showing {filteredReports.length} of {reports.length} reports
             </p>
           </div>
-          <ReportList reports={filteredReports} selectedReport={selectedReport} onSelectReport={(report) => setSelectedReportId(report.id)} />
+          <ReportList
+            reports={filteredReports}
+            selectedReport={selectedReport}
+            hasActiveFilters={hasActiveFilters}
+            onSelectReport={(report) => setSelectedReportId(report.id)}
+          />
         </div>
         <ReportDetailPanel report={selectedReport} />
       </div>

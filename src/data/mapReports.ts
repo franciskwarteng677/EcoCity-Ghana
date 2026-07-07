@@ -1,4 +1,4 @@
-import { communityReports, type CommunityReport } from "./communityReports";
+import { communityReports, isPubliclyVisibleReport, type CommunityReport } from "./communityReports";
 import { getReportCoordinates, type ReportCoordinates } from "@/lib/communityCoordinates";
 
 export type MapReport = CommunityReport & {
@@ -19,5 +19,6 @@ function toMapReport(report: CommunityReport) {
 }
 
 export const mapReports: MapReport[] = communityReports
+  .filter(isPubliclyVisibleReport)
   .map(toMapReport)
   .filter((report): report is MapReport => Boolean(report));

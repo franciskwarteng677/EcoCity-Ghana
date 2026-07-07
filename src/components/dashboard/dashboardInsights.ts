@@ -7,6 +7,7 @@ import {
   type ReportUrgency
 } from "@/data/communityReports";
 import { getReportEvidenceImageCount } from "@/lib/evidence";
+import { getDashboardModerationCounts, type DashboardModerationCounts } from "@/lib/reports";
 
 export type CountItem<T extends string = string> = {
   label: T;
@@ -32,6 +33,8 @@ export type DashboardInsights = {
   assignedReports: number;
   inProgressReports: number;
   resolvedReports: number;
+  rejectedReports: number;
+  hiddenReports: number;
   dangerSignals: number;
   highEmergencyReports: number;
   communitiesRepresented: number;
@@ -122,18 +125,20 @@ function getServiceAreaInsights(reports: CommunityReport[]) {
   );
 }
 
-export function getDashboardInsights(reports = communityReports): DashboardInsights {
+export function getDashboardInsights(reports = communityReports, moderationCounts: DashboardModerationCounts = getDashboardModerationCounts(reports)): DashboardInsights {
   const floodDrainageReports = reports.filter((report) => floodDrainageCategories.has(report.category));
   const serviceAreas = getServiceAreaInsights(reports);
   const evidenceImageCounts = reports.map(getReportEvidenceImageCount);
 
   return {
-    totalReports: reports.length,
-    needsReviewReports: reports.filter((report) => report.status === "needs_review").length,
+    totalReports: moderationCounts.totalSubmittedReports,
+    needsReviewReports: moderationCounts.awaitingReviewReports,
     verifiedReports: reports.filter((report) => report.status === "verified").length,
-    assignedReports: reports.filter((report) => report.status === "assigned").length,
-    inProgressReports: reports.filter((report) => report.status === "in_progress").length,
-    resolvedReports: reports.filter((report) => report.status === "resolved").length,
+    assignedReports: moderationCounts.assignedReports,
+    inProgressReports: moderationCounts.inProgressReports,
+    resolvedReports: moderationCounts.resolvedReports,
+    rejectedReports: moderationCounts.rejectedReports,
+    hiddenReports: moderationCounts.hiddenReports,
     dangerSignals: reports.filter((report) => report.isDangerous).length,
     highEmergencyReports: reports.filter((report) => priorityUrgencies.includes(report.urgency)).length,
     communitiesRepresented: new Set(reports.map((report) => report.community)).size,

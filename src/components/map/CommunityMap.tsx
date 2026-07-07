@@ -16,6 +16,7 @@ import { useCommunityReports } from "@/hooks/useCommunityReports";
 import type { ReportCoordinates } from "@/lib/communityCoordinates";
 import { StatusBadge } from "@/components/reports/StatusBadge";
 import { UrgencyBadge } from "@/components/reports/UrgencyBadge";
+import { VisibilityBadge } from "@/components/reports/VisibilityBadge";
 
 type MapFilters = {
   category: string;
@@ -240,6 +241,7 @@ export function CommunityMap() {
   };
 
   const hasFilters = Boolean(filters.category || filters.urgency || filters.status);
+  const hasPublicReports = reports.length > 0;
 
   if (!mapKey) {
     return <SetupNotice />;
@@ -276,6 +278,11 @@ export function CommunityMap() {
       {source === "sample" ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
           Supabase environment variables are not configured, so the map uses local starter reports.
+        </div>
+      ) : null}
+      {!hasPublicReports ? (
+        <div className="rounded-lg border border-civic-100 bg-white p-5 text-sm font-semibold leading-6 text-slate-600 shadow-soft">
+          No public reports are available for the map yet. Reports will appear here when they are awaiting review or approved for public visibility.
         </div>
       ) : null}
       <section className="rounded-lg border border-civic-100 bg-white p-4 shadow-soft">
@@ -323,6 +330,7 @@ export function CommunityMap() {
                 </span>
                 <UrgencyBadge urgency={selectedReport.urgency} />
                 <StatusBadge status={selectedReport.status as ReportStatus} />
+                {selectedReport.publicVisibility === "under_review" ? <VisibilityBadge visibility={selectedReport.publicVisibility} /> : null}
               </div>
 
               <dl className="grid gap-4 rounded-lg bg-slate-50 p-4">
@@ -335,7 +343,9 @@ export function CommunityMap() {
             </div>
           ) : (
             <div className="rounded-lg bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
-              No mapped reports match the current filters.
+              {hasPublicReports
+                ? "No mapped reports match the current filters."
+                : "No public map pins are available yet."}
             </div>
           )}
 
@@ -374,7 +384,9 @@ export function CommunityMap() {
 
         {filteredUnmappedReports.length === 0 ? (
           <div className="mt-5 rounded-lg bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-600">
-            Every report in the current filter has map coordinates.
+            {hasPublicReports
+              ? "Every report in the current filter has map coordinates."
+              : "No public reports without map locations are available yet."}
           </div>
         ) : (
           <div className="mt-5 grid gap-3 md:grid-cols-2">
@@ -388,6 +400,7 @@ export function CommunityMap() {
                   <div className="flex flex-wrap gap-2">
                     <UrgencyBadge urgency={report.urgency} />
                     <StatusBadge status={report.status} />
+                    {report.publicVisibility === "under_review" ? <VisibilityBadge visibility={report.publicVisibility} /> : null}
                   </div>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-600">

@@ -28,7 +28,7 @@ export function SubmissionNotice({
         <div>
           <h2 className="text-base font-bold text-ink">Report submitted successfully.</h2>
           <p className="mt-2 text-sm leading-6 text-slate-700">
-            Your report has been saved for community review{reportId ? ` with tracking ID ${reportId}` : ""}.{" "}
+            Your report has been submitted for review{reportId ? ` with tracking ID ${reportId}` : ""}. It will be labeled as awaiting review until a reviewer verifies or routes it.{" "}
             {isMapped
               ? "It includes a map location and can appear as a marker."
               : "It was saved without map coordinates and will appear in the reports register while listed separately on the map page."}

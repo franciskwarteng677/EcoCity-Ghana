@@ -3,6 +3,7 @@ import type { CommunityReport } from "@/data/communityReports";
 import { getEvidenceAttachmentLabel } from "@/lib/evidence";
 import { StatusBadge } from "./StatusBadge";
 import { UrgencyBadge } from "./UrgencyBadge";
+import { VisibilityBadge } from "./VisibilityBadge";
 
 type ReportDetailPanelProps = {
   report: CommunityReport | null;
@@ -24,6 +25,7 @@ export function ReportDetailPanel({ report }: ReportDetailPanelProps) {
       <div className="mt-4 flex flex-wrap gap-2">
         <UrgencyBadge urgency={report.urgency} />
         <StatusBadge status={report.status} />
+        {report.publicVisibility === "under_review" ? <VisibilityBadge visibility={report.publicVisibility} /> : null}
         <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{report.category}</span>
       </div>
 

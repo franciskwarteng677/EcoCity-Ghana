@@ -6,7 +6,7 @@ The app uses Next.js App Router, TypeScript, Tailwind CSS, MapLibre/MapTiler, an
 
 ## Report Submission
 
-Residents submit reports at `/report` with category, community, location detail, description, urgency, danger signal, optional evidence images, optional contact preference, and optional map coordinates. New reports are saved with the `needs_review` workflow status.
+Residents submit reports at `/report` with category, community, location detail, description, urgency, danger signal, optional evidence images, optional contact preference, and optional map coordinates. New reports are saved with the `needs_review` workflow status and `under_review` public visibility. Public pages label these reports as awaiting review/submitted for review so they do not appear as official verified reports.
 
 Reports can include browser location, a dropped map pin, typed-location search, manual coordinates, or only a descriptive location. Reports without coordinates are still saved and reviewed. Evidence images are optional and should only be added when it is safe to collect them.
 
@@ -17,10 +17,11 @@ Run `supabase-schema.sql` in the Supabase SQL editor before using the app with a
 - `reports` for submitted community reports.
 - `report_evidence` for multiple uploaded evidence image records linked to reports.
 - `report_updates` for public civic response timeline entries.
-- `public_reports` view for public report reads without private reporter contact fields.
+- `public_reports` view for public report reads without private reporter contact fields. This view excludes hidden and rejected reports.
+- `public_report_dashboard_summary` view for aggregate moderation counts without exposing report/contact details.
 - `report-evidence` Supabase Storage bucket setup for uploaded evidence images.
 - RLS policies that allow public report submission and public reads through the safe public view.
-- Public `report_updates` reads only where `is_public = true`.
+- Public evidence/update reads only for reports that are still publicly visible.
 
 Public users are not granted report update permissions. Admin status changes are handled by a server-side API route.
 
@@ -60,19 +61,21 @@ Setup steps:
 
 Each report links to `/reports/[id]`, which shows the full report details, all attached evidence images if present, and public update timeline.
 
+Reports with `public_visibility = hidden`, `public_visibility = rejected`, or `status = rejected` are excluded from public report pages. Reporter contact preference, name, phone, and email are never selected by the public report view.
+
 ## Map Behavior
 
-`/map` displays reports with valid latitude and longitude as pins. Reports without coordinates appear in a separate “Reports without map location” section, so they remain visible even before mapping is complete.
+`/map` displays publicly visible reports with valid latitude and longitude as pins. Reports without coordinates appear in a separate “Reports without map location” section, so they remain visible even before mapping is complete. Hidden and rejected reports are not shown on the public map.
 
 ## Dashboard Analytics
 
-`/dashboard` summarizes total reports, workflow status counts, danger signals, evidence image coverage, high/emergency reports, responsible service areas, and reports needing map location. Empty states explain when no reports have been assigned, resolved, or submitted yet.
+`/dashboard` summarizes total submitted reports, awaiting review, assigned, in-progress, resolved, rejected, and hidden counts. Detailed dashboard lists and breakdowns use only publicly visible reports, while the aggregate summary view can count hidden/rejected reports without exposing their contents. Empty states explain when no reports are publicly visible yet.
 
 ## Admin Review Workflow
 
 `/admin` is an MVP review console protected by an admin access screen. Reviewers must enter `ADMIN_REVIEW_CODE` before the submitted report dashboard is loaded. The code is checked server-side through `/api/admin/auth`, then a temporary browser-session admin access state unlocks the console for the current session.
 
-After access is verified, reviewers can filter reports, select a report, inspect attached evidence, view private reporter contact details, update report status, assign a responsible service area, and add public or private review notes. Review actions go through `/api/admin/reports`, which remains protected server-side and uses the Supabase service role key only server-side.
+After access is verified, reviewers can filter all reports, select a report, inspect attached evidence, view private reporter contact details, update report status, control public visibility, assign a responsible service area, and add public or private review notes. Review actions go through `/api/admin/reports`, which remains protected server-side and uses the Supabase service role key only server-side.
 
 Workflow statuses:
 
@@ -84,6 +87,15 @@ Workflow statuses:
 - `rejected`
 - `duplicate`
 - `needs_more_information`
+
+Public visibility values:
+
+- `under_review`
+- `public`
+- `hidden`
+- `rejected`
+
+New citizen reports default to `under_review`. Admins can hide or reject a report without deleting it or removing review history. Hidden and rejected reports remain visible in the admin console but are excluded from public pages.
 
 ## Environment Variables
 

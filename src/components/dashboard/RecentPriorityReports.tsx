@@ -1,6 +1,7 @@
 import { AlertTriangle, MapPin } from "lucide-react";
 import { StatusBadge } from "@/components/reports/StatusBadge";
 import { UrgencyBadge } from "@/components/reports/UrgencyBadge";
+import { VisibilityBadge } from "@/components/reports/VisibilityBadge";
 import { AnalyticsSection } from "./AnalyticsPrimitives";
 import type { DashboardInsights } from "./dashboardInsights";
 
@@ -24,6 +25,7 @@ export function RecentPriorityReports({ insights }: { insights: DashboardInsight
               <div className="flex flex-wrap gap-2">
                 <UrgencyBadge urgency={report.urgency} />
                 <StatusBadge status={report.status} />
+                {report.publicVisibility === "under_review" ? <VisibilityBadge visibility={report.publicVisibility} /> : null}
               </div>
             </div>
             <div className="mt-3 grid gap-2 text-sm leading-6 text-slate-600">

@@ -4,13 +4,16 @@ import {
   type ReportEvidence,
   type ReportUpdate,
   type ReportCategory,
-  normalizeReportStatus
+  isPubliclyVisibleReport,
+  normalizeReportStatus,
+  normalizeReportVisibility
 } from "@/data/communityReports";
 import {
   getSupabaseClient,
   isSupabaseConfigured,
   type CommunityReportInsert,
   type CommunityReportRow,
+  type PublicReportDashboardSummaryRow,
   type PublicCommunityReportRow,
   type ReportEvidenceInsert,
   type ReportEvidenceRow,
@@ -30,6 +33,16 @@ export type ReportDataSource = "supabase" | "sample";
 export type ReportsResult = {
   reports: CommunityReport[];
   source: ReportDataSource;
+};
+
+export type DashboardModerationCounts = {
+  totalSubmittedReports: number;
+  awaitingReviewReports: number;
+  assignedReports: number;
+  inProgressReports: number;
+  resolvedReports: number;
+  rejectedReports: number;
+  hiddenReports: number;
 };
 
 export type NewCommunityReport = {
@@ -96,6 +109,30 @@ function sortNewestFirst(reports: CommunityReport[]) {
 
     return secondDate.localeCompare(firstDate);
   });
+}
+
+export function getDashboardModerationCounts(reports: CommunityReport[]): DashboardModerationCounts {
+  return {
+    totalSubmittedReports: reports.length,
+    awaitingReviewReports: reports.filter((report) => report.publicVisibility !== "hidden" && report.publicVisibility !== "rejected" && report.status === "needs_review").length,
+    assignedReports: reports.filter((report) => report.publicVisibility !== "hidden" && report.publicVisibility !== "rejected" && report.status === "assigned").length,
+    inProgressReports: reports.filter((report) => report.publicVisibility !== "hidden" && report.publicVisibility !== "rejected" && report.status === "in_progress").length,
+    resolvedReports: reports.filter((report) => report.publicVisibility !== "hidden" && report.publicVisibility !== "rejected" && report.status === "resolved").length,
+    rejectedReports: reports.filter((report) => report.publicVisibility === "rejected" || report.status === "rejected").length,
+    hiddenReports: reports.filter((report) => report.publicVisibility === "hidden").length
+  };
+}
+
+function mapDashboardSummaryRow(row: PublicReportDashboardSummaryRow): DashboardModerationCounts {
+  return {
+    totalSubmittedReports: row.total_submitted_reports,
+    awaitingReviewReports: row.awaiting_review_reports,
+    assignedReports: row.assigned_reports,
+    inProgressReports: row.in_progress_reports,
+    resolvedReports: row.resolved_reports,
+    rejectedReports: row.rejected_reports,
+    hiddenReports: row.hidden_reports
+  };
 }
 
 function getEvidencePublicUrl(filePath: string | null, publicUrl: string | null) {
@@ -216,6 +253,7 @@ export function mapReportRowToCommunityReport(row: ReadableCommunityReportRow, e
     description: row.description,
     urgency: row.urgency,
     status: normalizeReportStatus(row.status),
+    publicVisibility: normalizeReportVisibility(row.public_visibility),
     dateReported: row.created_at,
     isDangerous: row.danger_noted,
     responsibleServiceArea: row.service_area,
@@ -243,6 +281,7 @@ export function mapNewReportToInsert(report: NewCommunityReport): CommunityRepor
     description: report.description,
     urgency: report.urgency,
     status: "needs_review",
+    public_visibility: "under_review",
     service_area: getServiceAreaForCategory(report.category),
     danger_noted: report.dangerNoted,
     evidence_label: report.evidenceLabel || null,
@@ -274,6 +313,7 @@ function createInsertedReportRow(report: NewCommunityReport): CommunityReportRow
     description: report.description,
     urgency: report.urgency,
     status: "needs_review",
+    public_visibility: "under_review",
     service_area: getServiceAreaForCategory(report.category),
     danger_noted: report.dangerNoted,
     evidence_label: report.evidenceLabel ?? null,
@@ -384,7 +424,7 @@ export function mapReportUpdateRowToReportUpdate(row: ReportUpdateRow): ReportUp
 export async function fetchCommunityReports(): Promise<ReportsResult> {
   if (!isSupabaseConfigured()) {
     return {
-      reports: sortNewestFirst(communityReports),
+      reports: sortNewestFirst(communityReports.filter(isPubliclyVisibleReport)),
       source: "sample"
     };
   }
@@ -393,7 +433,7 @@ export async function fetchCommunityReports(): Promise<ReportsResult> {
 
   if (!supabase) {
     return {
-      reports: sortNewestFirst(communityReports),
+      reports: sortNewestFirst(communityReports.filter(isPubliclyVisibleReport)),
       source: "sample"
     };
   }
@@ -416,7 +456,7 @@ export async function fetchCommunityReports(): Promise<ReportsResult> {
 
 export async function fetchCommunityReportById(id: string): Promise<ReportWithUpdates | null> {
   if (!isSupabaseConfigured()) {
-    const sampleReport = communityReports.find((report) => report.id === id);
+    const sampleReport = communityReports.filter(isPubliclyVisibleReport).find((report) => report.id === id);
 
     return sampleReport ? { report: sampleReport, updates: [], source: "sample" } : null;
   }
@@ -424,7 +464,7 @@ export async function fetchCommunityReportById(id: string): Promise<ReportWithUp
   const supabase = getSupabaseClient();
 
   if (!supabase) {
-    const sampleReport = communityReports.find((report) => report.id === id);
+    const sampleReport = communityReports.filter(isPubliclyVisibleReport).find((report) => report.id === id);
 
     return sampleReport ? { report: sampleReport, updates: [], source: "sample" } : null;
   }
@@ -457,6 +497,26 @@ export async function fetchCommunityReportById(id: string): Promise<ReportWithUp
     updates: (updateData ?? []).map(mapReportUpdateRowToReportUpdate),
     source: "supabase"
   };
+}
+
+export async function fetchDashboardModerationCounts(): Promise<DashboardModerationCounts> {
+  if (!isSupabaseConfigured()) {
+    return getDashboardModerationCounts(communityReports);
+  }
+
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return getDashboardModerationCounts(communityReports);
+  }
+
+  const { data, error } = await supabase.from("public_report_dashboard_summary").select("*").single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return mapDashboardSummaryRow(data);
 }
 
 export async function submitCommunityReport(report: NewCommunityReport, evidenceFiles?: File[] | null) {

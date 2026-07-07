@@ -1,19 +1,19 @@
-import { AlertTriangle, Camera, CircleCheck, ClipboardList, Flame, Images, MapPinned, ShieldAlert, UserCheck, UsersRound, Wrench } from "lucide-react";
+import { AlertTriangle, Camera, CircleCheck, ClipboardList, EyeOff, Flame, Images, MapPinned, ShieldAlert, UserCheck, UsersRound, Wrench, XCircle } from "lucide-react";
 import type { DashboardInsights } from "./dashboardInsights";
 import { InsightCard } from "./InsightCard";
 
 export function DashboardSummaryCards({ insights }: { insights: DashboardInsights }) {
   const cards = [
     {
-      label: "Total reports",
+      label: "Total submitted",
       value: insights.totalReports,
-      detail: "Community issues currently represented in the report register.",
+      detail: "All reports submitted, including those hidden from public pages.",
       icon: ClipboardList
     },
     {
-      label: "Needs review",
+      label: "Awaiting review",
       value: insights.needsReviewReports,
-      detail: "Reports that should be assessed before response planning.",
+      detail: "Publicly visible submissions that are not verified yet.",
       icon: ShieldAlert,
       tone: "amber" as const
     },
@@ -40,6 +40,20 @@ export function DashboardSummaryCards({ insights }: { insights: DashboardInsight
       value: insights.resolvedReports,
       detail: "Reports marked as resolved in the current community register.",
       icon: CircleCheck
+    },
+    {
+      label: "Rejected",
+      value: insights.rejectedReports,
+      detail: "Reports rejected by moderation and excluded from public pages.",
+      icon: XCircle,
+      tone: "red" as const
+    },
+    {
+      label: "Hidden",
+      value: insights.hiddenReports,
+      detail: "Reports hidden from public pages while retained for admin review.",
+      icon: EyeOff,
+      tone: "slate" as const
     },
     {
       label: "Danger signals",

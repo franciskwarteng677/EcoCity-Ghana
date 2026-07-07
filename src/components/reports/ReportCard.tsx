@@ -4,6 +4,7 @@ import type { CommunityReport } from "@/data/communityReports";
 import { getEvidenceAttachmentLabel, getReportEvidenceImageCount } from "@/lib/evidence";
 import { StatusBadge } from "./StatusBadge";
 import { UrgencyBadge } from "./UrgencyBadge";
+import { VisibilityBadge } from "./VisibilityBadge";
 
 type ReportCardProps = {
   report: CommunityReport;
@@ -36,6 +37,7 @@ export function ReportCard({ report, isSelected, onSelect }: ReportCardProps) {
           <div className="flex flex-wrap gap-2">
             <UrgencyBadge urgency={report.urgency} />
             <StatusBadge status={report.status} />
+            {report.publicVisibility === "under_review" ? <VisibilityBadge visibility={report.publicVisibility} /> : null}
           </div>
         </div>
 

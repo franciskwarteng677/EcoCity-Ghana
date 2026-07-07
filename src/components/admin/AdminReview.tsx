@@ -4,24 +4,30 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Loader2, Pencil, RefreshCw, Save, ShieldCheck, Trash2, UserRound, X } from "lucide-react";
 import {
   getReportStatusLabel,
+  getReportVisibilityLabel,
   normalizeReportStatus,
+  normalizeReportVisibility,
   reportCategories,
   reportStatuses,
+  reportVisibilities,
   reportUrgencies,
   type CommunityReport,
   type ReportCategory,
   type ReportStatus,
+  type ReportVisibility,
   type ReportUpdate,
   type ReportUrgency
 } from "@/data/communityReports";
-import { useCommunityReports } from "@/hooks/useCommunityReports";
+import type { ReportDataSource } from "@/lib/reports";
 import { EvidenceGallery } from "@/components/reports/EvidenceGallery";
 import { StatusBadge } from "@/components/reports/StatusBadge";
 import { UrgencyBadge } from "@/components/reports/UrgencyBadge";
+import { VisibilityBadge } from "@/components/reports/VisibilityBadge";
 import { getEvidenceAttachmentLabel, getReportEvidenceImageCount } from "@/lib/evidence";
 
 type AdminFilters = {
   status: string;
+  visibility: string;
   urgency: string;
   category: string;
   danger: string;
@@ -29,9 +35,12 @@ type AdminFilters = {
 
 type AdminApiResponse = {
   error?: string;
+  reports?: CommunityReport[];
+  source?: ReportDataSource;
   updates?: ReportUpdate[];
   report?: {
     status?: string;
+    public_visibility?: string | null;
     service_area?: string | null;
     contact_preference?: string | null;
     reporter_name?: string | null;
@@ -47,6 +56,7 @@ type ReporterContactDetails = {
 
 const initialFilters: AdminFilters = {
   status: "",
+  visibility: "",
   urgency: "",
   category: "",
   danger: ""
@@ -93,11 +103,12 @@ function getContactPreferenceDisplay(contactPreference: string | null) {
 
 function matchesFilters(report: CommunityReport, filters: AdminFilters) {
   const statusMatch = filters.status ? report.status === filters.status : true;
+  const visibilityMatch = filters.visibility ? report.publicVisibility === filters.visibility : true;
   const urgencyMatch = filters.urgency ? report.urgency === filters.urgency : true;
   const categoryMatch = filters.category ? report.category === filters.category : true;
   const dangerMatch = filters.danger ? report.isDangerous === (filters.danger === "yes") : true;
 
-  return statusMatch && urgencyMatch && categoryMatch && dangerMatch;
+  return statusMatch && visibilityMatch && urgencyMatch && categoryMatch && dangerMatch;
 }
 
 async function sendAdminRequest(payload: Record<string, unknown>) {
@@ -183,11 +194,14 @@ function ReporterContactSection({
 }
 
 export function AdminReview() {
-  const { reports, source, isLoading, error } = useCommunityReports();
   const [localReports, setLocalReports] = useState<CommunityReport[]>([]);
+  const [source, setSource] = useState<ReportDataSource>("supabase");
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
+  const [reportsError, setReportsError] = useState<string | null>(null);
   const [filters, setFilters] = useState<AdminFilters>(initialFilters);
   const [selectedReportId, setSelectedReportId] = useState("");
   const [status, setStatus] = useState<ReportStatus>("needs_review");
+  const [publicVisibility, setPublicVisibility] = useState<ReportVisibility>("under_review");
   const [responsibleServiceArea, setResponsibleServiceArea] = useState("");
   const [note, setNote] = useState("");
   const [isPublic, setIsPublic] = useState(true);
@@ -203,9 +217,28 @@ export function AdminReview() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const loadAdminReports = useCallback(async () => {
+    setIsLoadingReports(true);
+    setReportsError(null);
+
+    try {
+      const result = await sendAdminRequest({
+        action: "list_reports"
+      });
+
+      setLocalReports(result.reports ?? []);
+      setSource(result.source ?? "supabase");
+    } catch (error) {
+      setLocalReports([]);
+      setReportsError(error instanceof Error ? error.message : "Unable to load submitted reports.");
+    } finally {
+      setIsLoadingReports(false);
+    }
+  }, []);
+
   useEffect(() => {
-    setLocalReports(reports);
-  }, [reports]);
+    void loadAdminReports();
+  }, [loadAdminReports]);
 
   const filteredReports = useMemo(() => localReports.filter((report) => matchesFilters(report, filters)), [filters, localReports]);
   const selectedReport = filteredReports.find((report) => report.id === selectedReportId) ?? filteredReports[0] ?? null;
@@ -251,6 +284,7 @@ export function AdminReview() {
     }
 
     setStatus(selectedReport.status);
+    setPublicVisibility(selectedReport.publicVisibility);
     setResponsibleServiceArea(selectedReport.responsibleServiceArea);
     setNote("");
     setIsPublic(true);
@@ -273,7 +307,7 @@ export function AdminReview() {
     return () => window.clearTimeout(timer);
   }, [activeReportId, loadReviewUpdates]);
 
-  function updateSelectedReport(nextStatus: ReportStatus, nextServiceArea?: string | null) {
+  function updateSelectedReport(nextStatus: ReportStatus, nextServiceArea?: string | null, nextPublicVisibility?: ReportVisibility | null) {
     if (!selectedReport) {
       return;
     }
@@ -284,6 +318,7 @@ export function AdminReview() {
           ? {
               ...report,
               status: nextStatus,
+              publicVisibility: nextPublicVisibility ?? report.publicVisibility,
               responsibleServiceArea: nextServiceArea?.trim() || report.responsibleServiceArea
             }
           : report
@@ -297,9 +332,11 @@ export function AdminReview() {
     }
 
     const refreshedStatus = normalizeReportStatus(report.status);
+    const refreshedVisibility = normalizeReportVisibility(report.public_visibility);
 
-    updateSelectedReport(refreshedStatus, report.service_area);
+    updateSelectedReport(refreshedStatus, report.service_area, refreshedVisibility);
     setStatus(refreshedStatus);
+    setPublicVisibility(refreshedVisibility);
 
     if (report.service_area) {
       setResponsibleServiceArea(report.service_area);
@@ -313,6 +350,7 @@ export function AdminReview() {
 
     setEditingUpdateId(null);
     setStatus(selectedReport.status);
+    setPublicVisibility(selectedReport.publicVisibility);
     setResponsibleServiceArea(selectedReport.responsibleServiceArea);
     setNote("");
     setIsPublic(true);
@@ -323,11 +361,20 @@ export function AdminReview() {
   function startEdit(update: ReportUpdate) {
     setEditingUpdateId(update.id);
     setStatus(update.status);
+    setPublicVisibility(selectedReport?.publicVisibility ?? "under_review");
     setResponsibleServiceArea(update.responsibleServiceArea ?? "");
     setNote(update.note ?? "");
     setIsPublic(update.isPublic);
     setSaveError(null);
     setSaveMessage(null);
+  }
+
+  function handleStatusChange(nextStatus: ReportStatus) {
+    setStatus(nextStatus);
+
+    if (nextStatus === "rejected") {
+      setPublicVisibility("rejected");
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -349,6 +396,7 @@ export function AdminReview() {
         reportId: selectedReport.id,
         updateId: editingUpdateId ?? undefined,
         status,
+        publicVisibility,
         responsibleServiceArea,
         note,
         isPublic
@@ -361,7 +409,7 @@ export function AdminReview() {
         updateSelectedReportFromApi(result.report);
         setReporterContactDetails(getReporterContactDetails(result.report));
       } else if (!editingUpdateId || isEditingLatestUpdate) {
-        updateSelectedReport(status, responsibleServiceArea);
+        updateSelectedReport(status, responsibleServiceArea, publicVisibility);
       }
 
       setSaveMessage(
@@ -423,7 +471,7 @@ export function AdminReview() {
     }
   }
 
-  if (isLoading) {
+  if (isLoadingReports) {
     return (
       <div className="grid min-h-[260px] place-items-center rounded-lg border border-civic-100 bg-white p-8 text-center shadow-sm">
         <div>
@@ -435,14 +483,14 @@ export function AdminReview() {
     );
   }
 
-  if (error) {
+  if (reportsError) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-800" role="alert">
         <div className="flex items-start gap-3">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
           <div>
             <h2 className="text-base font-bold">Unable to load admin reports</h2>
-            <p className="mt-2 text-sm leading-6">{error}</p>
+            <p className="mt-2 text-sm leading-6">{reportsError}</p>
           </div>
         </div>
       </div>
@@ -458,7 +506,7 @@ export function AdminReview() {
       ) : null}
 
       <section className="rounded-lg border border-civic-100 bg-white p-5 shadow-sm" aria-label="Admin filters">
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <label className="grid gap-2 text-sm font-bold text-ink">
             Status
             <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })} className={inputClass}>
@@ -466,6 +514,17 @@ export function AdminReview() {
               {reportStatuses.map((option) => (
                 <option key={option} value={option}>
                   {getReportStatusLabel(option)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-ink">
+            Public visibility
+            <select value={filters.visibility} onChange={(event) => setFilters({ ...filters, visibility: event.target.value })} className={inputClass}>
+              <option value="">All visibility</option>
+              {reportVisibilities.map((option) => (
+                <option key={option} value={option}>
+                  {getReportVisibilityLabel(option)}
                 </option>
               ))}
             </select>
@@ -534,6 +593,7 @@ export function AdminReview() {
                     <div className="flex flex-wrap gap-2">
                       <UrgencyBadge urgency={report.urgency} />
                       <StatusBadge status={report.status} />
+                      <VisibilityBadge visibility={report.publicVisibility} />
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
@@ -558,7 +618,7 @@ export function AdminReview() {
               <ShieldCheck className="mt-1 h-5 w-5 shrink-0 text-civic-700" aria-hidden="true" />
               <div>
                 <h2 className="text-xl font-bold tracking-normal text-ink">Review action</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">Update status, route the report, and publish a public timeline note.</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">Update status, control public visibility, route the report, and publish a public timeline note.</p>
               </div>
             </div>
 
@@ -571,6 +631,10 @@ export function AdminReview() {
                 <div className="rounded-lg bg-slate-50 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-civic-700">{selectedReport.id}</p>
                   <h3 className="mt-2 text-base font-bold text-ink">{selectedReport.title}</h3>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <StatusBadge status={selectedReport.status} />
+                    <VisibilityBadge visibility={selectedReport.publicVisibility} />
+                  </div>
                   <p className="mt-2 text-sm leading-6 text-slate-600">{selectedReport.description}</p>
                   <EvidenceGallery report={selectedReport} compact />
                   <ReporterContactSection
@@ -582,10 +646,21 @@ export function AdminReview() {
 
                 <label className="grid gap-2 text-sm font-bold text-ink">
                   Status
-                  <select value={status} onChange={(event) => setStatus(event.target.value as ReportStatus)} className={inputClass}>
+                  <select value={status} onChange={(event) => handleStatusChange(event.target.value as ReportStatus)} className={inputClass}>
                     {reportStatuses.map((option) => (
                       <option key={option} value={option}>
                         {getReportStatusLabel(option)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="grid gap-2 text-sm font-bold text-ink">
+                  Public visibility
+                  <select value={publicVisibility} onChange={(event) => setPublicVisibility(event.target.value as ReportVisibility)} className={inputClass}>
+                    {reportVisibilities.map((option) => (
+                      <option key={option} value={option}>
+                        {getReportVisibilityLabel(option)}
                       </option>
                     ))}
                   </select>

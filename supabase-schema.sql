@@ -33,6 +33,9 @@ create table if not exists public.reports (
       'needs_more_information'
     )
   ),
+  public_visibility text not null default 'under_review' check (
+    public_visibility in ('under_review', 'public', 'hidden', 'rejected')
+  ),
   service_area text not null,
   danger_noted boolean not null default false,
   evidence_label text,
@@ -63,6 +66,7 @@ alter table public.reports add column if not exists evidence_size_bytes integer;
 alter table public.reports add column if not exists contact_preference text;
 alter table public.reports add column if not exists reporter_name text;
 alter table public.reports add column if not exists reporter_contact text;
+alter table public.reports add column if not exists public_visibility text;
 
 alter table public.reports alter column status set default 'needs_review';
 alter table public.reports drop constraint if exists reports_status_check;
@@ -90,7 +94,25 @@ alter table public.reports add constraint reports_status_check check (
   )
 );
 
-create or replace view public.public_reports as
+update public.reports
+set public_visibility = case
+  when status = 'rejected' then 'rejected'
+  else 'public'
+end
+where public_visibility is null;
+
+alter table public.reports alter column public_visibility set default 'under_review';
+alter table public.reports alter column public_visibility set not null;
+alter table public.reports drop constraint if exists reports_public_visibility_check;
+alter table public.reports add constraint reports_public_visibility_check check (
+  public_visibility in ('under_review', 'public', 'hidden', 'rejected')
+);
+
+create index if not exists reports_public_visibility_idx on public.reports (public_visibility);
+
+drop view if exists public.public_reports;
+
+create view public.public_reports as
 select
   id,
   category,
@@ -100,6 +122,7 @@ select
   description,
   urgency,
   status,
+  public_visibility,
   service_area,
   danger_noted,
   evidence_label,
@@ -111,7 +134,57 @@ select
   latitude,
   longitude,
   created_at
+from public.reports
+where public_visibility in ('under_review', 'public')
+  and status <> 'rejected';
+
+create or replace view public.public_report_dashboard_summary as
+select
+  count(*)::integer as total_submitted_reports,
+  count(*) filter (
+    where public_visibility not in ('hidden', 'rejected')
+      and status <> 'rejected'
+      and status = 'needs_review'
+  )::integer as awaiting_review_reports,
+  count(*) filter (
+    where public_visibility not in ('hidden', 'rejected')
+      and status <> 'rejected'
+      and status = 'assigned'
+  )::integer as assigned_reports,
+  count(*) filter (
+    where public_visibility not in ('hidden', 'rejected')
+      and status <> 'rejected'
+      and status = 'in_progress'
+  )::integer as in_progress_reports,
+  count(*) filter (
+    where public_visibility not in ('hidden', 'rejected')
+      and status <> 'rejected'
+      and status = 'resolved'
+  )::integer as resolved_reports,
+  count(*) filter (
+    where public_visibility = 'rejected'
+      or status = 'rejected'
+  )::integer as rejected_reports,
+  count(*) filter (
+    where public_visibility = 'hidden'
+  )::integer as hidden_reports
 from public.reports;
+
+create or replace function public.is_report_publicly_visible(report_uuid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.reports
+    where id = report_uuid
+      and public_visibility in ('under_review', 'public')
+      and status <> 'rejected'
+  );
+$$;
 
 create table if not exists public.report_evidence (
   id uuid primary key default gen_random_uuid(),
@@ -175,6 +248,7 @@ with check (
   )
   and urgency in ('Low', 'Medium', 'High', 'Emergency')
   and status = 'needs_review'
+  and public_visibility = 'under_review'
   and (contact_preference is null or char_length(contact_preference) <= 120)
   and (reporter_name is null or char_length(reporter_name) <= 160)
   and (reporter_contact is null or char_length(reporter_contact) <= 240)
@@ -188,7 +262,7 @@ create policy "Report evidence records are publicly readable"
 on public.report_evidence
 for select
 to anon, authenticated
-using (true);
+using (public.is_report_publicly_visible(report_id));
 
 create policy "Anyone can add report evidence records"
 on public.report_evidence
@@ -200,7 +274,7 @@ create policy "Public report updates are readable"
 on public.report_updates
 for select
 to anon, authenticated
-using (is_public = true);
+using (is_public = true and public.is_report_publicly_visible(report_id));
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -236,8 +310,11 @@ with check (
 );
 
 grant usage on schema public to anon, authenticated;
+revoke all on function public.is_report_publicly_visible(uuid) from public;
+grant execute on function public.is_report_publicly_visible(uuid) to anon, authenticated;
 revoke select on public.reports from anon, authenticated;
 grant insert on public.reports to anon, authenticated;
 grant select on public.public_reports to anon, authenticated;
+grant select on public.public_report_dashboard_summary to anon, authenticated;
 grant select, insert on public.report_evidence to anon, authenticated;
 grant select on public.report_updates to anon, authenticated;

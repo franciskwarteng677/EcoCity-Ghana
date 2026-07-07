@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { ReportCategory, ReportStatus, ReportUrgency } from "@/data/communityReports";
+import type { ReportCategory, ReportStatus, ReportUrgency, ReportVisibility } from "@/data/communityReports";
 
 export type CommunityReportRow = {
   id: string;
@@ -10,6 +10,7 @@ export type CommunityReportRow = {
   description: string;
   urgency: ReportUrgency;
   status: ReportStatus;
+  public_visibility: ReportVisibility;
   service_area: string;
   danger_noted: boolean;
   evidence_label: string | null;
@@ -27,6 +28,16 @@ export type CommunityReportRow = {
 };
 
 export type PublicCommunityReportRow = Omit<CommunityReportRow, "contact_preference" | "reporter_name" | "reporter_contact">;
+
+export type PublicReportDashboardSummaryRow = {
+  total_submitted_reports: number;
+  awaiting_review_reports: number;
+  assigned_reports: number;
+  in_progress_reports: number;
+  resolved_reports: number;
+  rejected_reports: number;
+  hidden_reports: number;
+};
 
 export type ReportUpdateRow = {
   id: string;
@@ -77,6 +88,7 @@ export type CommunityReportInsert = {
   description: string;
   urgency: ReportUrgency;
   status?: ReportStatus;
+  public_visibility?: ReportVisibility;
   service_area: string;
   danger_noted: boolean;
   evidence_label?: string | null;
@@ -117,6 +129,12 @@ export type Database = {
     Views: {
       public_reports: {
         Row: PublicCommunityReportRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      public_report_dashboard_summary: {
+        Row: PublicReportDashboardSummaryRow;
         Insert: never;
         Update: never;
         Relationships: [];

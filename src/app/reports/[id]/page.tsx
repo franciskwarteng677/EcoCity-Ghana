@@ -5,6 +5,7 @@ import { PageShell } from "@/components/PageShell";
 import { EvidenceGallery } from "@/components/reports/EvidenceGallery";
 import { StatusBadge } from "@/components/reports/StatusBadge";
 import { UrgencyBadge } from "@/components/reports/UrgencyBadge";
+import { VisibilityBadge } from "@/components/reports/VisibilityBadge";
 import { fetchCommunityReportById } from "@/lib/reports";
 import { getReportStatusLabel } from "@/data/communityReports";
 import { getEvidenceAttachmentLabel, getReportEvidenceImageCount } from "@/lib/evidence";
@@ -62,6 +63,7 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
               <div className="mt-4 flex flex-wrap gap-2">
                 <StatusBadge status={report.status} />
                 <UrgencyBadge urgency={report.urgency} />
+                {report.publicVisibility === "under_review" ? <VisibilityBadge visibility={report.publicVisibility} /> : null}
                 <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{report.category}</span>
               </div>
             </div>

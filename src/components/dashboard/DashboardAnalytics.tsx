@@ -1,7 +1,13 @@
 "use client";
 
 import { AlertCircle, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useCommunityReports } from "@/hooks/useCommunityReports";
+import {
+  fetchDashboardModerationCounts,
+  getDashboardModerationCounts,
+  type DashboardModerationCounts
+} from "@/lib/reports";
 import { CategoryBreakdown } from "./CategoryBreakdown";
 import { CommunityHotspots } from "./CommunityHotspots";
 import { DashboardSummaryCards } from "./DashboardSummaryCards";
@@ -14,6 +20,38 @@ import { getDashboardInsights } from "./dashboardInsights";
 
 export function DashboardAnalytics() {
   const { reports, source, isLoading, error } = useCommunityReports();
+  const [moderationCounts, setModerationCounts] = useState<DashboardModerationCounts | null>(null);
+  const [moderationError, setModerationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadModerationCounts() {
+      try {
+        const counts = await fetchDashboardModerationCounts();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setModerationCounts(counts);
+        setModerationError(null);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setModerationCounts(null);
+        setModerationError(error instanceof Error ? error.message : "Unable to load moderation counts.");
+      }
+    }
+
+    void loadModerationCounts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   if (isLoading) {
     return (
@@ -41,7 +79,7 @@ export function DashboardAnalytics() {
     );
   }
 
-  const insights = getDashboardInsights(reports);
+  const insights = getDashboardInsights(reports, moderationCounts ?? getDashboardModerationCounts(reports));
 
   return (
     <div className="grid gap-6">
@@ -50,9 +88,14 @@ export function DashboardAnalytics() {
           Supabase environment variables are not configured, so dashboard insights use local starter reports.
         </div>
       ) : null}
+      {moderationError ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
+          Moderation totals are using the visible public report register because the dashboard summary view could not be loaded: {moderationError}
+        </div>
+      ) : null}
       {reports.length === 0 ? (
         <div className="rounded-lg border border-civic-100 bg-white p-5 text-sm font-semibold leading-6 text-slate-600 shadow-sm">
-          No reports have been submitted yet. New citizen reports will appear in these dashboard summaries after submission.
+          No public reports are available for dashboard analysis yet. Reports will appear here when they are awaiting review or approved for public visibility.
         </div>
       ) : null}
       <DashboardSummaryCards insights={insights} />
