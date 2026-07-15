@@ -110,9 +110,12 @@ alter table public.reports add constraint reports_public_visibility_check check 
 
 create index if not exists reports_public_visibility_idx on public.reports (public_visibility);
 
+drop view if exists public.public_report_dashboard_summary;
 drop view if exists public.public_reports;
 
-create view public.public_reports as
+create view public.public_reports
+with (security_invoker = true, security_barrier = true)
+as
 select
   id,
   category,
@@ -138,37 +141,24 @@ from public.reports
 where public_visibility in ('under_review', 'public')
   and status <> 'rejected';
 
-create or replace view public.public_report_dashboard_summary as
+create view public.public_report_dashboard_summary
+with (security_invoker = true, security_barrier = true)
+as
 select
-  count(*)::integer as total_submitted_reports,
+  count(*)::integer as total_public_reports,
   count(*) filter (
-    where public_visibility not in ('hidden', 'rejected')
-      and status <> 'rejected'
-      and status = 'needs_review'
+    where status = 'needs_review'
   )::integer as awaiting_review_reports,
   count(*) filter (
-    where public_visibility not in ('hidden', 'rejected')
-      and status <> 'rejected'
-      and status = 'assigned'
+    where status = 'assigned'
   )::integer as assigned_reports,
   count(*) filter (
-    where public_visibility not in ('hidden', 'rejected')
-      and status <> 'rejected'
-      and status = 'in_progress'
+    where status = 'in_progress'
   )::integer as in_progress_reports,
   count(*) filter (
-    where public_visibility not in ('hidden', 'rejected')
-      and status <> 'rejected'
-      and status = 'resolved'
-  )::integer as resolved_reports,
-  count(*) filter (
-    where public_visibility = 'rejected'
-      or status = 'rejected'
-  )::integer as rejected_reports,
-  count(*) filter (
-    where public_visibility = 'hidden'
-  )::integer as hidden_reports
-from public.reports;
+    where status = 'resolved'
+  )::integer as resolved_reports
+from public.public_reports;
 
 create or replace function public.is_report_publicly_visible(report_uuid uuid)
 returns boolean
@@ -258,6 +248,15 @@ with check (
   )
 );
 
+create policy "Reports are publicly readable"
+on public.reports
+for select
+to anon, authenticated
+using (
+  public_visibility in ('under_review', 'public')
+  and status <> 'rejected'
+);
+
 create policy "Report evidence records are publicly readable"
 on public.report_evidence
 for select
@@ -312,8 +311,33 @@ with check (
 grant usage on schema public to anon, authenticated;
 revoke all on function public.is_report_publicly_visible(uuid) from public;
 grant execute on function public.is_report_publicly_visible(uuid) to anon, authenticated;
-revoke select on public.reports from anon, authenticated;
+revoke all on public.reports from public, anon, authenticated;
+revoke select (contact_preference, reporter_name, reporter_contact) on public.reports from public, anon, authenticated;
 grant insert on public.reports to anon, authenticated;
+grant select (
+  id,
+  category,
+  title,
+  community,
+  location_detail,
+  description,
+  urgency,
+  status,
+  public_visibility,
+  service_area,
+  danger_noted,
+  evidence_label,
+  evidence_file_name,
+  evidence_file_path,
+  evidence_public_url,
+  evidence_mime_type,
+  evidence_size_bytes,
+  latitude,
+  longitude,
+  created_at
+) on public.reports to anon, authenticated;
+revoke all on public.public_reports from public, anon, authenticated;
+revoke all on public.public_report_dashboard_summary from public, anon, authenticated;
 grant select on public.public_reports to anon, authenticated;
 grant select on public.public_report_dashboard_summary to anon, authenticated;
 grant select, insert on public.report_evidence to anon, authenticated;

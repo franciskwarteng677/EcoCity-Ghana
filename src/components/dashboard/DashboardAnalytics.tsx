@@ -4,9 +4,9 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useCommunityReports } from "@/hooks/useCommunityReports";
 import {
-  fetchDashboardModerationCounts,
-  getDashboardModerationCounts,
-  type DashboardModerationCounts
+  fetchPublicDashboardCounts,
+  getPublicDashboardCounts,
+  type PublicDashboardCounts
 } from "@/lib/reports";
 import { CategoryBreakdown } from "./CategoryBreakdown";
 import { CommunityHotspots } from "./CommunityHotspots";
@@ -20,33 +20,33 @@ import { getDashboardInsights } from "./dashboardInsights";
 
 export function DashboardAnalytics() {
   const { reports, source, isLoading, error } = useCommunityReports();
-  const [moderationCounts, setModerationCounts] = useState<DashboardModerationCounts | null>(null);
-  const [moderationError, setModerationError] = useState<string | null>(null);
+  const [publicCounts, setPublicCounts] = useState<PublicDashboardCounts | null>(null);
+  const [publicCountsError, setPublicCountsError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadModerationCounts() {
+    async function loadPublicCounts() {
       try {
-        const counts = await fetchDashboardModerationCounts();
+        const counts = await fetchPublicDashboardCounts();
 
         if (!isMounted) {
           return;
         }
 
-        setModerationCounts(counts);
-        setModerationError(null);
+        setPublicCounts(counts);
+        setPublicCountsError(null);
       } catch (error) {
         if (!isMounted) {
           return;
         }
 
-        setModerationCounts(null);
-        setModerationError(error instanceof Error ? error.message : "Unable to load moderation counts.");
+        setPublicCounts(null);
+        setPublicCountsError(error instanceof Error ? error.message : "Unable to load public dashboard counts.");
       }
     }
 
-    void loadModerationCounts();
+    void loadPublicCounts();
 
     return () => {
       isMounted = false;
@@ -79,7 +79,7 @@ export function DashboardAnalytics() {
     );
   }
 
-  const insights = getDashboardInsights(reports, moderationCounts ?? getDashboardModerationCounts(reports));
+  const insights = getDashboardInsights(reports, publicCounts ?? getPublicDashboardCounts(reports));
 
   return (
     <div className="grid gap-6">
@@ -88,9 +88,9 @@ export function DashboardAnalytics() {
           Supabase environment variables are not configured, so dashboard insights use local starter reports.
         </div>
       ) : null}
-      {moderationError ? (
+      {publicCountsError ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
-          Moderation totals are using the visible public report register because the dashboard summary view could not be loaded: {moderationError}
+          Dashboard totals are using the visible public report register because the summary view could not be loaded: {publicCountsError}
         </div>
       ) : null}
       {reports.length === 0 ? (

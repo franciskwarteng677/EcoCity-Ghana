@@ -18,9 +18,9 @@ Run `supabase-schema.sql` in the Supabase SQL editor before using the app with a
 - `report_evidence` for multiple uploaded evidence image records linked to reports.
 - `report_updates` for public civic response timeline entries.
 - `public_reports` view for public report reads without private reporter contact fields. This view excludes hidden and rejected reports.
-- `public_report_dashboard_summary` view for aggregate moderation counts without exposing report/contact details.
+- `public_report_dashboard_summary` invoker view for counts derived only from publicly visible reports.
 - `report-evidence` Supabase Storage bucket setup for uploaded evidence images.
-- RLS policies that allow public report submission and public reads through the safe public view.
+- RLS policies and column-level grants that allow public report submission and safe public reads without reporter contact fields.
 - Public evidence/update reads only for reports that are still publicly visible.
 
 Public users are not granted report update permissions. Admin status changes are handled by a server-side API route.

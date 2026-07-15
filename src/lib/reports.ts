@@ -35,14 +35,12 @@ export type ReportsResult = {
   source: ReportDataSource;
 };
 
-export type DashboardModerationCounts = {
-  totalSubmittedReports: number;
+export type PublicDashboardCounts = {
+  totalPublicReports: number;
   awaitingReviewReports: number;
   assignedReports: number;
   inProgressReports: number;
   resolvedReports: number;
-  rejectedReports: number;
-  hiddenReports: number;
 };
 
 export type NewCommunityReport = {
@@ -111,27 +109,25 @@ function sortNewestFirst(reports: CommunityReport[]) {
   });
 }
 
-export function getDashboardModerationCounts(reports: CommunityReport[]): DashboardModerationCounts {
+export function getPublicDashboardCounts(reports: CommunityReport[]): PublicDashboardCounts {
+  const publicReports = reports.filter(isPubliclyVisibleReport);
+
   return {
-    totalSubmittedReports: reports.length,
-    awaitingReviewReports: reports.filter((report) => report.publicVisibility !== "hidden" && report.publicVisibility !== "rejected" && report.status === "needs_review").length,
-    assignedReports: reports.filter((report) => report.publicVisibility !== "hidden" && report.publicVisibility !== "rejected" && report.status === "assigned").length,
-    inProgressReports: reports.filter((report) => report.publicVisibility !== "hidden" && report.publicVisibility !== "rejected" && report.status === "in_progress").length,
-    resolvedReports: reports.filter((report) => report.publicVisibility !== "hidden" && report.publicVisibility !== "rejected" && report.status === "resolved").length,
-    rejectedReports: reports.filter((report) => report.publicVisibility === "rejected" || report.status === "rejected").length,
-    hiddenReports: reports.filter((report) => report.publicVisibility === "hidden").length
+    totalPublicReports: publicReports.length,
+    awaitingReviewReports: publicReports.filter((report) => report.status === "needs_review").length,
+    assignedReports: publicReports.filter((report) => report.status === "assigned").length,
+    inProgressReports: publicReports.filter((report) => report.status === "in_progress").length,
+    resolvedReports: publicReports.filter((report) => report.status === "resolved").length
   };
 }
 
-function mapDashboardSummaryRow(row: PublicReportDashboardSummaryRow): DashboardModerationCounts {
+function mapDashboardSummaryRow(row: PublicReportDashboardSummaryRow): PublicDashboardCounts {
   return {
-    totalSubmittedReports: row.total_submitted_reports,
+    totalPublicReports: row.total_public_reports,
     awaitingReviewReports: row.awaiting_review_reports,
     assignedReports: row.assigned_reports,
     inProgressReports: row.in_progress_reports,
-    resolvedReports: row.resolved_reports,
-    rejectedReports: row.rejected_reports,
-    hiddenReports: row.hidden_reports
+    resolvedReports: row.resolved_reports
   };
 }
 
@@ -499,15 +495,15 @@ export async function fetchCommunityReportById(id: string): Promise<ReportWithUp
   };
 }
 
-export async function fetchDashboardModerationCounts(): Promise<DashboardModerationCounts> {
+export async function fetchPublicDashboardCounts(): Promise<PublicDashboardCounts> {
   if (!isSupabaseConfigured()) {
-    return getDashboardModerationCounts(communityReports);
+    return getPublicDashboardCounts(communityReports);
   }
 
   const supabase = getSupabaseClient();
 
   if (!supabase) {
-    return getDashboardModerationCounts(communityReports);
+    return getPublicDashboardCounts(communityReports);
   }
 
   const { data, error } = await supabase.from("public_report_dashboard_summary").select("*").single();

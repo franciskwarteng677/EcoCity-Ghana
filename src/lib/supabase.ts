@@ -27,16 +27,36 @@ export type CommunityReportRow = {
   created_at: string;
 };
 
-export type PublicCommunityReportRow = Omit<CommunityReportRow, "contact_preference" | "reporter_name" | "reporter_contact">;
+export type PublicCommunityReportRow = Pick<
+  CommunityReportRow,
+  | "id"
+  | "category"
+  | "title"
+  | "community"
+  | "location_detail"
+  | "description"
+  | "urgency"
+  | "status"
+  | "public_visibility"
+  | "service_area"
+  | "danger_noted"
+  | "evidence_label"
+  | "evidence_file_name"
+  | "evidence_file_path"
+  | "evidence_public_url"
+  | "evidence_mime_type"
+  | "evidence_size_bytes"
+  | "latitude"
+  | "longitude"
+  | "created_at"
+>;
 
 export type PublicReportDashboardSummaryRow = {
-  total_submitted_reports: number;
+  total_public_reports: number;
   awaiting_review_reports: number;
   assigned_reports: number;
   in_progress_reports: number;
   resolved_reports: number;
-  rejected_reports: number;
-  hidden_reports: number;
 };
 
 export type ReportUpdateRow = {

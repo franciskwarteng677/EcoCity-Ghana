@@ -7,7 +7,7 @@ import {
   type ReportUrgency
 } from "@/data/communityReports";
 import { getReportEvidenceImageCount } from "@/lib/evidence";
-import { getDashboardModerationCounts, type DashboardModerationCounts } from "@/lib/reports";
+import { getPublicDashboardCounts, type PublicDashboardCounts } from "@/lib/reports";
 
 export type CountItem<T extends string = string> = {
   label: T;
@@ -33,8 +33,6 @@ export type DashboardInsights = {
   assignedReports: number;
   inProgressReports: number;
   resolvedReports: number;
-  rejectedReports: number;
-  hiddenReports: number;
   dangerSignals: number;
   highEmergencyReports: number;
   communitiesRepresented: number;
@@ -54,6 +52,7 @@ export type DashboardInsights = {
 
 const priorityUrgencies: ReportUrgency[] = ["High", "Emergency"];
 const floodDrainageCategories = new Set(["Flooding", "Blocked Drain", "Poor Drainage", "Polluted Water"]);
+const publicReportStatuses = reportStatuses.filter((status) => status !== "rejected");
 
 function toPercentage(count: number, total: number) {
   if (total === 0) {
@@ -125,20 +124,18 @@ function getServiceAreaInsights(reports: CommunityReport[]) {
   );
 }
 
-export function getDashboardInsights(reports = communityReports, moderationCounts: DashboardModerationCounts = getDashboardModerationCounts(reports)): DashboardInsights {
+export function getDashboardInsights(reports = communityReports, publicCounts: PublicDashboardCounts = getPublicDashboardCounts(reports)): DashboardInsights {
   const floodDrainageReports = reports.filter((report) => floodDrainageCategories.has(report.category));
   const serviceAreas = getServiceAreaInsights(reports);
   const evidenceImageCounts = reports.map(getReportEvidenceImageCount);
 
   return {
-    totalReports: moderationCounts.totalSubmittedReports,
-    needsReviewReports: moderationCounts.awaitingReviewReports,
+    totalReports: publicCounts.totalPublicReports,
+    needsReviewReports: publicCounts.awaitingReviewReports,
     verifiedReports: reports.filter((report) => report.status === "verified").length,
-    assignedReports: moderationCounts.assignedReports,
-    inProgressReports: moderationCounts.inProgressReports,
-    resolvedReports: moderationCounts.resolvedReports,
-    rejectedReports: moderationCounts.rejectedReports,
-    hiddenReports: moderationCounts.hiddenReports,
+    assignedReports: publicCounts.assignedReports,
+    inProgressReports: publicCounts.inProgressReports,
+    resolvedReports: publicCounts.resolvedReports,
     dangerSignals: reports.filter((report) => report.isDangerous).length,
     highEmergencyReports: reports.filter((report) => priorityUrgencies.includes(report.urgency)).length,
     communitiesRepresented: new Set(reports.map((report) => report.community)).size,
@@ -146,7 +143,7 @@ export function getDashboardInsights(reports = communityReports, moderationCount
     reportsNeedingMapLocation: reports.filter((report) => typeof report.latitude !== "number" || typeof report.longitude !== "number").length,
     reportsWithEvidence: evidenceImageCounts.filter((count) => count > 0).length,
     totalEvidenceImages: evidenceImageCounts.reduce((total, count) => total + count, 0),
-    statusOverview: countBy(reports, (report) => report.status, reportStatuses),
+    statusOverview: countBy(reports, (report) => report.status, publicReportStatuses),
     urgencyBreakdown: countBy(reports, (report) => report.urgency, reportUrgencies),
     categoryBreakdown: sortByCountThenLabel(countBy(reports, (report) => report.category)),
     communityHotspots: getCommunityHotspots(reports),
